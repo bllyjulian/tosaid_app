@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "636662978544",
+    "project_id": "tosaapp-18c4b",
+    "storage_bucket": "tosaapp-18c4b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:636662978544:android:bdad5339b8837789696f35",
+        "android_client_info": {
+          "package_name": "com.example.tosaid_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "636662978544-si2u1apij975l33iq4h0ajs1vrjrc8fh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.tosaid_app",
+            "certificate_hash": "b5075ab14ca8c93c526aae9c65ee4bfb979e6d98"
+          }
+        },
+        {
+          "client_id": "636662978544-bpb151gke1jjii9ljtto7u0enth5s08i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzydnnY3YD2mbAOHoE6EFGdYcNOtra784"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "636662978544-bpb151gke1jjii9ljtto7u0enth5s08i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
