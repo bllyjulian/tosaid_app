@@ -377,7 +377,7 @@ class HomePageContent extends StatelessWidget {
                                 'latihan': [],
                               },
                               {
-                                'judul': "Taḥlīl al-Akhaṭhā’",
+                                'judul': "Taḥlil al-Akhathā’",
                                 'sub_bab': [
                                   {
                                     'judul_arab': "تَحْلِيلُ الأَخْطَاءِ",
@@ -385,6 +385,73 @@ class HomePageContent extends StatelessWidget {
                                     'file_pdf':
                                         'assets/pdfs/3_pola2_materi1.pdf'
                                   }
+                                ],
+                                'latihan': [],
+                              },
+                              {
+                                'judul': "Qawa’id",
+                                'sub_bab': [
+                                  {
+                                    'judul_arab': "مُبْتَدَأٌ وَخَبَرٌ",
+                                    'judul_latin':
+                                        'kalimat yang tidak diawali kata kerja',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi1.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "كَانَ وَأَخَوَاتُهَا",
+                                    'judul_latin':
+                                        'menunjukkan waktu atau perubahan keadaan',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi2.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "إِنَّ وَأَخَوَاتُهَا",
+                                    'judul_latin':
+                                        'memberi penegasan, harapan, perbandingan, atau pengecualian',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi3.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "فِعْل وَفَاعِل",
+                                    'judul_latin':
+                                        'setiap perbuatan pasti ada pelakunya',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi4.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "مَفْعُولٌ بِهِ",
+                                    'judul_latin':
+                                        'Objek yang dikenai pekerjaan',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi5.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "نَعْتٌ وَمَنْعُوتٌ",
+                                    'judul_latin':
+                                        'Hubungan antara kata benda dan kata sifatnya',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi6.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "التَّوَابِعُ",
+                                    'judul_latin':
+                                        'mengikuti i‘rab kata sebelumnya',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi7.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "الْمَفْعُولَاتُ",
+                                    'judul_latin': 'keterangan tambahan',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi8.pdf'
+                                  },
+                                  {
+                                    'judul_arab': "الأَعْدَادُ",
+                                    'judul_latin': 'memiliki aturan khusus',
+                                    'file_pdf':
+                                        'assets/pdfs/3_pola3_materi9.pdf'
+                                  },
                                 ],
                                 'latihan': [],
                               },
