@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'halaman_baca_pdf.dart';
-import 'halaman_kuis.dart';
+import 'halaman_kuis.dart'; // Import Halaman Kuis Langsung (Tanpa Pengantar Audio)
 
 class DaftarMateriPage extends StatelessWidget {
   final String title;
   final List<Map<String, dynamic>> dataMateri;
+
+  // Parameter Baru untuk Logika Tarakib Pola 3
   final bool showLatihanButton;
   final Map<String, String>? kategoriInfo;
 
@@ -12,7 +14,7 @@ class DaftarMateriPage extends StatelessWidget {
     super.key,
     required this.title,
     required this.dataMateri,
-    this.showLatihanButton = false,
+    this.showLatihanButton = false, // Default false (tidak muncul)
     this.kategoriInfo,
   });
 
@@ -31,6 +33,7 @@ class DaftarMateriPage extends StatelessWidget {
       ),
       body: Column(
         children: [
+          // Header Progress
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Column(
@@ -52,6 +55,8 @@ class DaftarMateriPage extends StatelessWidget {
               ],
             ),
           ),
+
+          // List Materi
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(20),
@@ -74,6 +79,7 @@ class DaftarMateriPage extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
+                      // Bagian Atas: Judul Materi & Icon PDF (Bisa diklik untuk baca)
                       InkWell(
                         onTap: () {
                           String pathPdf = materi['file_pdf'] ?? "";
@@ -125,7 +131,7 @@ class DaftarMateriPage extends StatelessWidget {
                         ),
                       ),
 
-                      // --- TOMBOL LATIHAN SPESIFIK ---
+                      // Bagian Bawah: Tombol Latihan (Hanya muncul jika showLatihanButton == true)
                       if (showLatihanButton) ...[
                         const SizedBox(height: 12),
                         const Divider(),
@@ -133,18 +139,28 @@ class DaftarMateriPage extends StatelessWidget {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              // AMBIL JUDUL ARAB SEBAGAI FILTER
-                              String judulArab = materi['judul_arab'] ?? "";
+                              // 1. Ambil Judul (Sekarang isinya Latin kan? misal "Mubtada Khabar")
+                              String judulUntukFilter =
+                                  materi['judul_arab'] ?? "";
+
+                              // 2. [BARU] Ambil Instruksi dari main.dart
+                              String? teksInstruksi = materi['instruksi'];
 
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => HalamanKuisPage(
-                                    title: "Latihan: $judulArab",
+                                    title: "Latihan: $judulUntukFilter",
+
+                                    // Data Kategori & Pola (Tetap)
                                     kategoriFilter: kategoriInfo!['kategori']!,
                                     polaFilter: kategoriInfo!['pola']!,
-                                    // PENTING: Kirim parameter ini untuk filter di Supabase
-                                    subBabFilter: judulArab,
+
+                                    // [PENTING 1] Filter Sub-Bab (Jangan dikomen, ini wajib biar soalnya spesifik)
+                                    subBabFilter: judulUntukFilter,
+
+                                    // [PENTING 2] Kirim Instruksi ke Kuis
+                                    instruksi: teksInstruksi,
                                   ),
                                 ),
                               );

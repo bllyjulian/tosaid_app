@@ -396,61 +396,156 @@ class HomePageContent extends StatelessWidget {
                                     'judul_latin':
                                         'kalimat yang tidak diawali kata kerja',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi1.pdf'
+                                        'assets/pdfs/3_pola3_materi1.pdf',
+                                    'instruksi': '''
+1. Perhatikan kalimat bahasa Arab yang tersedia dengan cermat.
+2. Seret kata yang tepat ke kolom Mubtada’ dan Khabar sesuai fungsinya.
+3. Perhatikan ketentuan berikut:
+   - Mubtada’ → marfū‘ (مرفوع)
+   - Khabar → marfū‘ (مرفوع)
+4. Jika khabar berbentuk:
+   - Satu kata → disebut khabar mufrad
+   - Kalimat → disebut khabar jumlah (harus memiliki ḍhamīr yang kembali ke mubtada’)
+   - Keterangan tempat/waktu → disebut khabar syibh jumlah
+Perhatikan urutan kalimat:
+   - Umumnya mubtada’ terlebih dahulu, lalu khabar.
+''',
                                   },
                                   {
                                     'judul_arab': "Kana wa Akhwatuha",
                                     'judul_latin':
                                         'menunjukkan waktu atau perubahan keadaan',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi2.pdf'
+                                        'assets/pdfs/3_pola3_materi2.pdf',
+                                    'instruksi': '''
+1. Perhatikan setiap kalimat bahasa Arab yang tersedia dengan saksama.
+2. Identifikasi kata kerja yang termasuk كَانَ وَأَخَوَاتُهَا  dalam kalimat.
+3. Seret kata yang tepat ke kolom Isim Kana dan Khabar Kana sesuai fungsinya.
+4. Perhatikan ketentuan berikut:
+   - Isim Kana → marfū‘ (مرفوع)
+   - Khabar Kana → manshūb (منصوب)
+
+''',
                                   },
                                   {
                                     'judul_arab': "Inna wa Akhwatuha",
                                     'judul_latin':
                                         'memberi penegasan, harapan, perbandingan, atau pengecualian',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi3.pdf'
+                                        'assets/pdfs/3_pola3_materi3.pdf',
+                                    'instruksi': '''
+1. Perhatikan setiap kalimat bahasa Arab yang tersedia dengan cermat.
+2. Identifikasi huruf yang termasuk إِنَّ وَأَخَوَاتُهَا  dalam kalimat.
+3. Tentukan Isim Inna (اسم إنّ), yaitu kata benda yang terletak setelah Inna dan ber-i‘rāb manshūb.
+4. Tentukan Khabar Inna (خبر إنّ), yaitu keterangan dari isim Inna yang tetap ber-i‘rāb marfū‘.
+5. Seret kata yang tepat ke kolom Isim Inna dan Khabar Inna sesuai fungsinya dalam kalimat.
+6. Perhatikan ketentuan berikut:
+   - Isim Inna → manshūb (منصوب)
+   - Khabar Inna → marfū‘ (مرفوع)
+''',
                                   },
                                   {
                                     'judul_arab': "Fi'il Fa'il",
                                     'judul_latin':
                                         'setiap perbuatan pasti ada pelakunya',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi4.pdf'
+                                        'assets/pdfs/3_pola3_materi4.pdf',
+                                    'instruksi': '''
+1. Perhatikan setiap kalimat bahasa Arab yang tersedia dengan cermat.
+2. Tentukan fi‘il (فِعْل), yaitu kata kerja yang menunjukkan suatu perbuatan atau kejadian.
+3. Tentukan fa‘il (فَاعِل), yaitu pelaku dari perbuatan tersebut.
+4. Seret kata yang tepat ke kolom Fi‘il dan Fa‘il sesuai dengan fungsinya dalam kalimat.
+5. Perhatikan ciri-ciri fi‘il, antara lain:
+   - Dapat berupa fi‘il māḍhī (lampau), fi‘il muḍhāri‘ (sedang/akan), atau fi‘il amr (perintah).
+6. Perhatikan ciri-ciri fa‘il, yaitu:
+   - Selalu ber-i‘rāb marfū‘
+   - Biasanya terletak setelah fi‘il
+   - Dapat berupa isim ẓāhir (kata benda jelas) atau ḍhamīr (kata ganti), baik tampak maupun tersembunyi.
+''',
                                   },
                                   {
                                     'judul_arab': "Maf'ul bih",
                                     'judul_latin':
                                         'Objek yang dikenai pekerjaan',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi5.pdf'
+                                        'assets/pdfs/3_pola3_materi5.pdf',
+                                    'instruksi': '''
+1. Perhatikan setiap kalimat bahasa Arab yang disajikan dengan saksama.
+2. Identifikasi unsur kalimat yang berupa fi‘il (kata kerja) dan fa‘il (pelaku).
+3. Tentukan kata yang menjadi objek dan dikenai perbuatan, yaitu maf‘ūl bih.
+4. Seret kata yang tepat ke kolom maf‘ūl bih (objek) sesuai dengan kalimat.
+5. Pastikan kata yang dipilih memenuhi ciri-ciri maf‘ūl bih, yaitu:
+   - Berupa isim (kata benda)
+   - Berkedudukan sebagai objek perbuatan
+   - Ber-i‘rāb manshūb
+6. Perhatikan tanda nashab pada akhir kata maf‘ūl bih, seperti:
+   - Fatḥah untuk isim mufrad dan jamak taksīr
+   - Yā’ (ـيـ) untuk isim mutsannā dan jamak mudzakkar sālīm
+   - Kasrah untuk jamak mu’annats sālīm
+''',
                                   },
                                   {
                                     'judul_arab': "Na'at wa Man'ut",
                                     'judul_latin':
                                         'Hubungan antara kata benda dan kata sifatnya',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi6.pdf'
+                                        'assets/pdfs/3_pola3_materi6.pdf',
+                                    'instruksi': '''
+1. Perhatikan kalimat bahasa Arab yang tersedia.
+2. Seret kata ke kolom Man‘ūt (kata yang disifati) dan Na‘at (kata sifat).
+3. Pastikan na‘at sesuai dengan man‘ūt dalam:
+   - i‘rab
+   - jenis kelamin
+   - jumlah
+   - ma‘rifah–nakirah
+''',
                                   },
                                   {
                                     'judul_arab': "Tawabi'",
                                     'judul_latin':
                                         'mengikuti i‘rab kata sebelumnya',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi7.pdf'
+                                        'assets/pdfs/3_pola3_materi7.pdf',
+                                    'instruksi': '''
+1. Bacalah setiap kalimat bahasa Arab dengan cermat.
+2. Perhatikan kata yang ditanyakan pada setiap soal.
+3. Tentukan jenis tawābi‘ dari kata tersebut.
+4. Seret (drag) pilihan jawaban yang tersedia ke kolom yang sesuai.
+5. Pilihan jawaban terdiri dari:
+   - نَعْت (sifat)
+   - عَطْف (penghubung)
+   - تَوْكِيد (penegas)
+   - بَدَل (pengganti)
+''',
                                   },
                                   {
                                     'judul_arab': "Maf'ulat",
                                     'judul_latin': 'keterangan tambahan',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi8.pdf'
+                                        'assets/pdfs/3_pola3_materi8.pdf',
+                                    'instruksi': '''
+1. Bacalah setiap jumlah fi‘liyah dengan cermat.
+2. Perhatikan kata yang ditanyakan.
+3. Tentukan jenis maf‘ūlāt dari kata tersebut.
+4. Seret (drag) jawaban yang tepat ke kolom yang tersedia.
+Pilihan jawaban:
+   - مَفْعُولٌ فِيهِ
+   - مَفْعُولٌ لِأَجْلِهِ
+   - مَفْعُولٌ مَعَهُ
+''',
                                   },
                                   {
                                     'judul_arab': "A'dad",
                                     'judul_latin': 'memiliki aturan khusus',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola3_materi9.pdf'
+                                        'assets/pdfs/3_pola3_materi9.pdf',
+                                    'instruksi': '''
+1. Bacalah setiap kalimat dengan cermat.
+2. Perhatikan konteks bilangan dan kata benda dalam kalimat.
+3. Seret (drag) kata yang paling tepat ke tempat kosong )….).
+4. Setiap soal hanya memiliki satu jawaban yang benar.
+5. Pastikan jawaban sesuai dengan kaidah الأعداد (kata bilangan) dalam bahasa Arab.
+''',
                                   },
                                 ],
                                 'latihan': [],

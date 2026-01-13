@@ -7,6 +7,7 @@ class HalamanKuisPage extends StatefulWidget {
   final String kategoriFilter;
   final String polaFilter;
   final String? subBabFilter;
+  final String? instruksi;
 
   const HalamanKuisPage({
     super.key,
@@ -14,6 +15,7 @@ class HalamanKuisPage extends StatefulWidget {
     required this.kategoriFilter,
     required this.polaFilter,
     this.subBabFilter,
+    this.instruksi,
   });
 
   @override
@@ -34,8 +36,11 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
   String? _droppedBox2;
   List<String> _pilihanKataDrag = [];
 
-  // --- CONFIG UI ---
-  int _tipeLayout = 2; // 1=Satu Kotak, 2=Dua Kotak, 3=Klasifikasi
+  // --- [BARU] STATE PILIHAN GANDA (PG) ---
+  // List ini akan menyimpan opsi yang sudah diacak beserta status benarnya
+  List<Map<String, dynamic>> _opsiPG = [];
+
+  int _tipeLayout = 2;
   String _labelBox1 = "";
   String _labelBox2 = "";
 
@@ -45,7 +50,40 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     _audioPlayer = AudioPlayer();
     _audioPlayer.onPlayerComplete
         .listen((event) => setState(() => _isPlaying = false));
+
     _ambilSoal();
+
+    // Tampilkan instruksi jika ada
+    if (widget.instruksi != null && widget.instruksi!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _tampilkanDialogInstruksi();
+      });
+    }
+  }
+
+  void _tampilkanDialogInstruksi() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("📝 Petunjuk Pengerjaan",
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Text(
+            widget.instruksi!,
+            style: const TextStyle(fontSize: 15, height: 1.5),
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            child: const Text("Mulai Mengerjakan",
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -54,66 +92,52 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     super.dispose();
   }
 
-  // ==========================================
-  // [WAJIB ADA] FUNGSI PEMBERSIH HAROKAT
-  // ==========================================
-  String _normalisasiArab(String text) {
-    if (text.isEmpty) return "";
+  String _bersihkanString(String text) {
     return text
-        .replaceAll(RegExp(r'[\u064B-\u065F\u0640]'), '') // Buang Harokat
-        .replaceAll('إ', 'ا') // Ubah Alif Hamzah Bawah -> Alif Biasa
-        .replaceAll('أ', 'ا') // Ubah Alif Hamzah Atas -> Alif Biasa
-        .replaceAll('آ', 'ا'); // Ubah Alif Mad -> Alif Biasa
+        .replaceAll(RegExp(r'[\u064B-\u065F\u0640]'), '')
+        .replaceAll('إ', 'ا')
+        .replaceAll('أ', 'ا')
+        .replaceAll('آ', 'ا')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  // --- LOGIKA MENENTUKAN TIPE TAMPILAN ---
   void _tentukanLayout() {
-    // 1. Ambil judul asli, lalu bersihkan harokatnya
-    String subBabRaw = widget.subBabFilter ?? "";
-    String subBab = _normalisasiArab(subBabRaw); // Pake yang sudah bersih
-
-    print("Cek Layout: Asli='$subBabRaw' -> Bersih='$subBab'");
-
+    String subBab = widget.subBabFilter ?? "";
     setState(() {
-      // Cek menggunakan teks gundul (tanpa harokat)
-      if (subBab.contains("مبتدا")) {
+      if (subBab == "Mubtada Khabar") {
         _tipeLayout = 2;
         _labelBox1 = "Mubtada'";
         _labelBox2 = "Khabar";
-      } else if (subBab.contains("كان") && subBab.contains("اخواتها")) {
+      } else if (subBab == "Kana wa Akhwatuha") {
         _tipeLayout = 2;
         _labelBox1 = "Isim Kana";
         _labelBox2 = "Khabar Kana";
-      } else if (subBab.contains("ان") && subBab.contains("اخواتها")) {
+      } else if (subBab == "Inna wa Akhwatuha") {
         _tipeLayout = 2;
         _labelBox1 = "Isim Inna";
         _labelBox2 = "Khabar Inna";
-      } else if (subBab.contains("فعل")) {
+      } else if (subBab == "Fi'il Fa'il") {
         _tipeLayout = 2;
         _labelBox1 = "Fi'il";
         _labelBox2 = "Fa'il";
-      } else if (subBab.contains("نعت")) {
+      } else if (subBab == "Na'at wa Man'ut") {
         _tipeLayout = 2;
         _labelBox1 = "Man'ut";
         _labelBox2 = "Na'at";
-      } else if (subBab.contains("مفعول")) {
-        // Bedakan Maf'ul Bih dan Maf'ulat
-        if (subBab.contains("المفعولات")) {
-          _tipeLayout = 3;
-          _labelBox1 = "Jenis Maf'ulat";
-        } else {
-          _tipeLayout = 1;
-          _labelBox1 = "Maf'ul Bih";
-        }
-      } else if (subBab.contains("الاعداد") || subBab.contains("العداد")) {
+      } else if (subBab == "Maf'ul bih") {
+        _tipeLayout = 1;
+        _labelBox1 = "Maf'ul Bih";
+      } else if (subBab == "A'dad") {
         _tipeLayout = 1;
         _labelBox1 = "Isi Titik-titik";
-      } else if (subBab.contains("التوابع")) {
-        // INI UNTUK TAWABI (Sudah dibersihkan harokatnya, pasti kedetect)
+      } else if (subBab == "Tawabi'") {
         _tipeLayout = 3;
         _labelBox1 = "Jenis Tawabi'";
+      } else if (subBab == "Maf'ulat") {
+        _tipeLayout = 3;
+        _labelBox1 = "Jenis Maf'ulat";
       } else {
-        // Default
         _tipeLayout = 2;
         _labelBox1 = "Box 1";
         _labelBox2 = "Box 2";
@@ -137,18 +161,23 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
       List<Map<String, dynamic>> data =
           List<Map<String, dynamic>>.from(response);
 
-      _tentukanLayout(); // Panggil fungsi penentu layout
-
-      if (_isTarakibPola3() && data.isNotEmpty) {
-        _setupDragDrop(data[0]);
-      }
+      _tentukanLayout();
 
       setState(() {
         _soalList = data;
         _isLoading = false;
+
+        // --- SIAPKAN OPSI PERTAMA KALI ---
+        if (_soalList.isNotEmpty) {
+          if (_isTarakibPola3()) {
+            _setupDragDrop(_soalList[0]);
+          } else {
+            _siapkanOpsiPG(); // Acak opsi untuk soal pertama
+          }
+        }
       });
     } catch (e) {
-      print("Error ambil soal: $e");
+      print("Error: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -156,14 +185,43 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
   bool _isTarakibPola3() =>
       widget.kategoriFilter == 'Tarakib' && widget.polaFilter == 'Pola 3';
 
+  // --- [BARU] FUNGSI ACAK OPSI PG ---
+  void _siapkanOpsiPG() {
+    if (_soalList.isEmpty) return;
+
+    final soal = _soalList[_currentIndex];
+    List<dynamic> rawOpsi = soal['opsi'] ?? [];
+    int kunciIndex = soal['kunci'] ?? 0;
+
+    List<Map<String, dynamic>> tempOpsi = [];
+
+    // Petakan opsi beserta status kebenarannya
+    for (int i = 0; i < rawOpsi.length; i++) {
+      tempOpsi.add({
+        'teks': rawOpsi[i].toString(),
+        'isCorrect': i == kunciIndex, // Tandai jika ini adalah jawaban benar
+      });
+    }
+
+    // ACAK URUTANNYA
+    tempOpsi.shuffle();
+
+    // Simpan ke state
+    _opsiPG = tempOpsi;
+  }
+
   void _setupDragDrop(Map<String, dynamic> soal) {
     _droppedBox1 = null;
     _droppedBox2 = null;
 
     if (_tipeLayout == 3) {
-      // KLASIFIKASI (Tawabi & Maf'ulat)
       if (_labelBox1 == "Jenis Tawabi'") {
-        _pilihanKataDrag = ["نَعْت", "عَطْف", "تَوْكِيد", "بَدَل"];
+        _pilihanKataDrag = [
+          "نَعْت (sifat)",
+          "عَطْف (penghubung)",
+          "تَوْكِيد (penegas)",
+          "بَدَل (pengganti)"
+        ];
       } else if (_labelBox1 == "Jenis Maf'ulat") {
         _pilihanKataDrag = [
           "مَفْعُولٌ بِهِ",
@@ -173,7 +231,6 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         ];
       }
     } else {
-      // NORMAL (Ambil dari Database untuk tipe 1 dan 2)
       List<dynamic> rawOpsi = soal['opsi'] ?? [];
       _pilihanKataDrag = rawOpsi
           .map((e) => e.toString())
@@ -183,11 +240,11 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     }
   }
 
-  void _jawabSoalPG(int indexJawaban) {
+  // --- [UPDATE] Jawab PG menggunakan boolean ---
+  void _jawabSoalPG(bool isCorrect) {
     _audioPlayer.stop();
-    int kunci = _soalList[_currentIndex]['kunci'];
-    if (indexJawaban == kunci) _score += 10;
-    _lanjutSoal();
+    if (isCorrect) _score += 10;
+    _lanjutSoal(); // Langsung lanjut tanpa pop-up
   }
 
   void _cekJawabanDragDrop() {
@@ -196,21 +253,24 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     bool isCorrect = false;
 
     if (_tipeLayout == 2) {
-      if (_droppedBox1 == null || _droppedBox2 == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Lengkapi kedua kotak!")));
-        return;
-      }
-      if (_droppedBox1 == opsiAsli[0] && _droppedBox2 == opsiAsli[1])
+      if (_droppedBox1 == null || _droppedBox2 == null) return;
+      if (_bersihkanString(_droppedBox1!) ==
+              _bersihkanString(opsiAsli[0].toString()) &&
+          _bersihkanString(_droppedBox2!) ==
+              _bersihkanString(opsiAsli[1].toString())) {
         isCorrect = true;
-    } else {
-      // Tipe 1 & 3 (Satu kotak jawaban)
-      if (_droppedBox1 == null) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Isi jawabannya!")));
-        return;
       }
-      if (_droppedBox1 == opsiAsli[0]) isCorrect = true;
+    } else if (_tipeLayout == 1) {
+      if (_droppedBox1 == null) return;
+      if (_bersihkanString(_droppedBox1!) ==
+          _bersihkanString(opsiAsli[0].toString())) {
+        isCorrect = true;
+      }
+    } else if (_tipeLayout == 3) {
+      if (_droppedBox1 == null) return;
+      String userAns = _bersihkanString(_droppedBox1!);
+      String dbKey = _bersihkanString(opsiAsli[0].toString());
+      if (userAns == dbKey) isCorrect = true;
     }
 
     if (isCorrect) _score += 10;
@@ -221,7 +281,12 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     if (_currentIndex < _soalList.length - 1) {
       setState(() {
         _currentIndex++;
-        if (_isTarakibPola3()) _setupDragDrop(_soalList[_currentIndex]);
+        // --- SETUP SOAL BERIKUTNYA ---
+        if (_isTarakibPola3()) {
+          _setupDragDrop(_soalList[_currentIndex]);
+        } else {
+          _siapkanOpsiPG(); // Acak opsi lagi untuk soal baru
+        }
       });
     } else {
       _tampilkanSkor();
@@ -237,26 +302,78 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         await _audioPlayer.play(UrlSource(url));
       }
       setState(() => _isPlaying = !_isPlaying);
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Gagal memutar audio")));
-    }
+    } catch (e) {}
   }
 
   void _tampilkanSkor() {
+    int totalSoal = _soalList.length;
+    // Hindari pembagian nol
+    double nilaiAkhir = totalSoal > 0 ? (_score / (totalSoal * 10)) * 100 : 0;
+
+    String pesan = "";
+    String emoji = "";
+    Color warna = Colors.blue;
+
+    if (nilaiAkhir == 100) {
+      pesan = "Mumtaz! Luar Biasa!";
+      emoji = "🏆";
+      warna = Colors.green;
+    } else if (nilaiAkhir >= 80) {
+      pesan = "Jayyid Jiddan! Sangat Bagus!";
+      emoji = "🎉";
+      warna = Colors.blue;
+    } else if (nilaiAkhir >= 60) {
+      pesan = "Jayyid! Bagus!";
+      emoji = "👍";
+      warna = Colors.orange;
+    } else {
+      pesan = "Hamasah! Ayo Belajar Lagi!";
+      emoji = "💪";
+      warna = Colors.redAccent;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text("Selesai"),
-        content: Text("Nilai Kamu: $_score"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 50)),
+            const SizedBox(height: 10),
+            Text("Nilai Kamu", style: TextStyle(color: Colors.grey[600])),
+            Text("$_score",
+                style: TextStyle(
+                    fontSize: 48, fontWeight: FontWeight.bold, color: warna)),
+            const SizedBox(height: 10),
+            Text(pesan,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
         actions: [
-          TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: const Text("OK"))
+          Center(
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Tutup Dialog
+                  Navigator.pop(context); // Kembali ke Halaman Materi
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: warna,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10))),
+                child: const Text("Kembali ke Materi",
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          )
         ],
       ),
     );
@@ -264,36 +381,53 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
 
   @override
   Widget build(BuildContext context) {
-    // [PERBAIKAN ERROR MERAH]: Pakai { } untuk If statement
-    if (_isLoading) {
+    if (_isLoading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (_soalList.isEmpty) {
-      return Scaffold(
-          appBar: AppBar(title: Text(widget.title)),
-          body: const Center(child: Text("Soal tidak ditemukan")));
-    }
+    if (_soalList.isEmpty)
+      return const Scaffold(body: Center(child: Text("Soal tidak ditemukan")));
 
     final soal = _soalList[_currentIndex];
-    final String pertanyaan = soal['pertanyaan'] ?? "Pertanyaan Kosong";
+    final String pertanyaan = soal['pertanyaan'] ?? "";
     final String? pathAudio = soal['audio_url'];
 
     return Scaffold(
       appBar: AppBar(
-          title: Text(widget.title),
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black),
-
-      // [PERBAIKAN OVERFLOW]: SingleChildScrollView
+        title: Text(widget.title),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        actions: [
+          if (widget.instruksi != null)
+            IconButton(
+                icon: const Icon(Icons.help_outline),
+                onPressed: _tampilkanDialogInstruksi)
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // --- Indikator Soal 1/10 ---
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Progres Kuis",
+                    style: TextStyle(
+                        color: Colors.grey, fontWeight: FontWeight.bold)),
+                Text(
+                  "Soal ${_currentIndex + 1}/${_soalList.length}",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.blue),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             LinearProgressIndicator(
                 value: (_currentIndex + 1) / _soalList.length,
-                color: Colors.blue),
+                color: Colors.blue,
+                backgroundColor: Colors.grey.shade200),
             const SizedBox(height: 20),
 
             // KOTAK SOAL
@@ -338,26 +472,27 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
 
             const SizedBox(height: 20),
 
-            // AREA JAWABAN
+            // JAWABAN
             _isTarakibPola3()
                 ? _buildDragDropContent()
-                : _buildPilihanGandaUI(soal['opsi'] ?? []),
+                : _buildPilihanGandaUI(), // Tidak perlu kirim opsi lagi, karena pakai state
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPilihanGandaUI(List<dynamic> opsi) {
+  // --- [UPDATE] UI PILIHAN GANDA (Menggunakan list yang sudah diacak) ---
+  Widget _buildPilihanGandaUI() {
     return Column(
-      children: opsi.map((pilihan) {
-        int index = opsi.indexOf(pilihan);
+      children: _opsiPG.map((item) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => _jawabSoalPG(index),
+              // Kirim status isCorrect (true/false) bukan index
+              onPressed: () => _jawabSoalPG(item['isCorrect']),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
@@ -367,7 +502,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
                   side: BorderSide(color: Colors.grey.shade300),
                 ),
               ),
-              child: Text(pilihan.toString(),
+              child: Text(item['teks'],
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 15)),
             ),
@@ -380,7 +515,6 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
   Widget _buildDragDropContent() {
     return Column(
       children: [
-        // AREA DROP
         if (_tipeLayout == 2)
           Row(children: [
             Expanded(
@@ -394,13 +528,10 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         else
           _buildDropZone(_labelBox1, _droppedBox1,
               (v) => setState(() => _droppedBox1 = v)),
-
         const SizedBox(height: 20),
         const Text("Pilihan Kata:",
             style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-
-        // KATA PILIHAN
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -419,7 +550,6 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
             );
           }).toList(),
         ),
-
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -427,8 +557,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
           child: ElevatedButton(
               onPressed: _cekJawabanDragDrop,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text("CEK JAWABAN",
-                  style: TextStyle(color: Colors.white))),
+              child: const Text("LANJUT", style: TextStyle(color: Colors.white))),
         )
       ],
     );

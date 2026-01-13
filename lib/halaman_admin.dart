@@ -34,33 +34,19 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
   List<Map<String, dynamic>> _daftarSoal = [];
   bool _isLoadingTabel = false;
 
-  // --- MAPPING KODE ---
-  final Map<String, String> _kodeKategori = {
-    "Istima'": "1",
-    "Qira'ah": "2",
-    "Tarakib": "3"
-  };
-  final Map<String, String> _kodePola = {
-    "Pola 1": "pola1",
-    "Pola 2": "pola2",
-    "Pola 3": "pola3",
-    "Pola 4": "pola4"
-  };
-
-  // --- [BARU] DATA SUB-BAB KHUSUS ---
+  // --- [BARU] DATA SUB-BAB KHUSUS (LATIN) ---
   // Pastikan isinya SAMA PERSIS dengan judul di main.dart
   final Map<String, List<String>> _dataSubBab = {
     "Tarakib - Pola 3": [
-      "مُبْتَدَأٌ وَخَبَرٌ", // Mubtada & Khabar
-      "كَانَ وَأَخَوَاتُهَا", // Kana wa Akhwatuha
-      "إِنَّ وَأَخَوَاتُهَا", // Inna wa Akhwatuha
-      "فِعْل وَفَاعِل", // Fi'il wa Fa'il
-      "مَفْعُولٌ بِهِ", // Maf'ul Bih
-      "نَعْتٌ وَمَنْعُوتٌ", // Na'at wa Man'ut
-      "التَّوَابِعُ",
-      // At-Tawabi'
-      "الْمَفْعُولَاتُ", // Al-Maf'ulat
-      "الأَعْدَادُ", // Al-A'dad
+      "Mubtada Khabar", // 1
+      "Kana wa Akhwatuha", // 2
+      "Inna wa Akhwatuha", // 3
+      "Fi'il Fa'il", // 4
+      "Maf'ul bih", // 5
+      "Na'at wa Man'ut", // 6
+      "Tawabi'", // 7
+      "Maf'ulat", // 8
+      "A'dad", // 9
     ],
   };
 
@@ -99,8 +85,12 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
       try {
         final supabase = Supabase.instance.client;
 
-        String kodeKat = _kodeKategori[_selectedKategori]!;
-        String kodePol = _kodePola[_selectedPola]!;
+        String kodeKat = _selectedKategori == "Istima'"
+            ? "1"
+            : _selectedKategori == "Qira'ah"
+                ? "2"
+                : "3";
+        String kodePol = _selectedPola.replaceAll(" ", "").toLowerCase();
         String namaFile = "${kodeKat}_${kodePol}_pengantar.mp3";
 
         final fileBytes = result.files.first.bytes;
@@ -201,8 +191,12 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
       // A. PROSES UPLOAD AUDIO SOAL
       if (_pickedFile != null) {
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        String kodeKat = _kodeKategori[_selectedKategori]!;
-        String kodePol = _kodePola[_selectedPola]!;
+        String kodeKat = _selectedKategori == "Istima'"
+            ? "1"
+            : _selectedKategori == "Qira'ah"
+                ? "2"
+                : "3";
+        String kodePol = _selectedPola.replaceAll(" ", "").toLowerCase();
         String namaFile = "${kodeKat}_${kodePol}_$timestamp.mp3";
 
         if (kIsWeb) {
@@ -231,7 +225,8 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
           _opsiDController.text,
         ],
         'kunci': _selectedKunci,
-        'sub_bab': _selectedSubBab, // Kolom baru di database
+        'sub_bab':
+            _selectedSubBab, // Kolom baru di database (Simpan Judul Latin)
       };
 
       await supabase.from('bank_soal').insert(dataKirim);
