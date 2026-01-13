@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'halaman_materi.dart';
 import 'halaman_kuis.dart';
-import 'halaman_pengantar.dart'; // Pastikan file ini ada (Audio Player)
+import 'halaman_pengantar.dart';
 
 class DaftarBabPage extends StatelessWidget {
   final String title;
   final Color color;
   final List<Map<String, dynamic>> dataBab;
 
-  // Parameter wajib untuk filter database & file
   final String kategoriDatabase;
   final String kodeKategoriFile;
 
@@ -43,6 +42,15 @@ class DaftarBabPage extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         itemCount: dataBab.length,
         itemBuilder: (context, index) {
+          // --- LOGIKA PENGECEKAN TARAKIB POLA 3 ---
+          // Kita cek apakah judul bab mengandung "Pola 3" atau sesuaikan dengan data kamu
+          // Karena dataBab kamu dinamis, kita pakai index atau judul spesifik.
+          // Di main.dart kamu, Pola 3 adalah index ke-2 (index dimulai dari 0).
+          // ATAU lebih aman cek berdasarkan kategori dan judul bab.
+
+          bool isTarakibPola3 = (kategoriDatabase == "Tarakib" &&
+              index == 2); // Pola 3 ada di index 2 array Tarakib
+
           return Container(
             margin: const EdgeInsets.only(bottom: 20),
             padding: const EdgeInsets.all(16),
@@ -71,16 +79,26 @@ class DaftarBabPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    // TOMBOL MATERI
+                    // TOMBOL MATERI (Selalu Muncul)
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
+                          // Kirim info apakah ini Tarakib Pola 3 ke halaman materi
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => DaftarMateriPage(
                                 title: "Materi Bab ${index + 1}",
                                 dataMateri: dataBab[index]['sub_bab'] ?? [],
+
+                                // Parameter Tambahan untuk Latihan per Materi
+                                showLatihanButton: isTarakibPola3,
+                                kategoriInfo: {
+                                  'kategori': kategoriDatabase,
+                                  'pola': "Pola ${index + 1}",
+                                  'kode_kat': kodeKategoriFile,
+                                  'kode_pol': "pola${index + 1}",
+                                },
                               ),
                             ),
                           );
@@ -99,44 +117,44 @@ class DaftarBabPage extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    // TOMBOL LATIHAN
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          // Kirim parameter ke Halaman Pengantar Audio (Latihan)
-                          String polaDB = "Pola ${index + 1}";
-                          String kodePolFile = "pola${index + 1}";
 
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => HalamanPengantarPage(
-                                title: "Latihan $polaDB",
-                                kategoriFilter:
-                                    kategoriDatabase, // Dari parameter class
-                                polaFilter: polaDB,
-                                kodeKategori:
-                                    kodeKategoriFile, // Dari parameter class
-                                kodePola: kodePolFile,
+                    // TOMBOL LATIHAN (Hanya Muncul Jika BUKAN Tarakib Pola 3)
+                    if (!isTarakibPola3) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            String polaDB = "Pola ${index + 1}";
+                            String kodePolFile = "pola${index + 1}";
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => HalamanPengantarPage(
+                                  title: "Latihan $polaDB",
+                                  kategoriFilter: kategoriDatabase,
+                                  polaFilter: polaDB,
+                                  kodeKategori: kodeKategoriFile,
+                                  kodePola: kodePolFile,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                        icon: Image.asset('assets/icons/latihan.png',
-                            width: 18, color: Colors.white),
-                        label: const Text("Kerjakan Latihan",
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 11)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF9800),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                          elevation: 0,
+                            );
+                          },
+                          icon: Image.asset('assets/icons/latihan.png',
+                              width: 18, color: Colors.white),
+                          label: const Text("Kerjakan Latihan",
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 11)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF9800),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            elevation: 0,
+                          ),
                         ),
                       ),
-                    ),
+                    ]
                   ],
                 )
               ],

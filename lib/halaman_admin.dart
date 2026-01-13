@@ -23,6 +23,7 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
   // --- VARIABEL STATE ---
   String _selectedKategori = "Istima'";
   String _selectedPola = "Pola 1";
+  String? _selectedSubBab; // [BARU] Variabel untuk Sub-Bab
   int _selectedKunci = 0; // 0=A, 1=B, 2=C, 3=D
 
   // --- VARIABEL AUDIO ---
@@ -46,14 +47,46 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
     "Pola 4": "pola4"
   };
 
+  // --- [BARU] DATA SUB-BAB KHUSUS ---
+  // Pastikan isinya SAMA PERSIS dengan judul di main.dart
+  final Map<String, List<String>> _dataSubBab = {
+    "Tarakib - Pola 3": [
+      "مُبْتَدَأٌ وَخَبَرٌ", // Mubtada & Khabar
+      "كَانَ وَأَخَوَاتُهَا", // Kana wa Akhwatuha
+      "إِنَّ وَأَخَوَاتُهَا", // Inna wa Akhwatuha
+      "فِعْل وَفَاعِل", // Fi'il wa Fa'il
+      "مَفْعُولٌ بِهِ", // Maf'ul Bih
+      "نَعْتٌ وَمَنْعُوتٌ", // Na'at wa Man'ut
+      "التَّوَابِعُ",
+      // At-Tawabi'
+      "الْمَفْعُولَاتُ", // Al-Maf'ulat
+      "الأَعْدَادُ", // Al-A'dad
+    ],
+  };
+
   @override
   void initState() {
     super.initState();
+    _resetSubBab(); // Inisialisasi awal
     _ambilDaftarSoal(); // Load data awal
   }
 
+  // [BARU] Reset sub-bab saat kategori/pola berubah
+  void _resetSubBab() {
+    String key = "$_selectedKategori - $_selectedPola";
+    if (_dataSubBab.containsKey(key)) {
+      setState(() {
+        _selectedSubBab = _dataSubBab[key]![0]; // Default ke item pertama
+      });
+    } else {
+      setState(() {
+        _selectedSubBab = null; // Tidak ada sub-bab
+      });
+    }
+  }
+
   // ==========================================
-  // FUNGSI UPLOAD PENGANTAR (YANG HILANG TADI)
+  // FUNGSI UPLOAD PENGANTAR
   // ==========================================
   void _uploadPengantar() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -66,7 +99,6 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
       try {
         final supabase = Supabase.instance.client;
 
-        // Nama File KUNCI: 1_pola1_pengantar.mp3
         String kodeKat = _kodeKategori[_selectedKategori]!;
         String kodePol = _kodePola[_selectedPola]!;
         String namaFile = "${kodeKat}_${kodePol}_pengantar.mp3";
@@ -74,7 +106,6 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
         final fileBytes = result.files.first.bytes;
         final filePath = result.files.first.path;
 
-        // Upload (Timpa file lama / upsert)
         if (kIsWeb) {
           await supabase.storage.from('audio_soal').uploadBinary(
                 namaFile,
@@ -111,12 +142,19 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
   void _ambilDaftarSoal() async {
     setState(() => _isLoadingTabel = true);
     try {
-      final response = await Supabase.instance.client
+      // [UPDATE] Menggunakan variable query agar bisa ditambah filter
+      var query = Supabase.instance.client
           .from('bank_soal')
           .select()
           .eq('kategori', _selectedKategori)
-          .eq('pola', _selectedPola)
-          .order('id', ascending: true);
+          .eq('pola', _selectedPola);
+
+      // [BARU] Filter Sub-Bab jika ada
+      if (_selectedSubBab != null) {
+        query = query.eq('sub_bab', _selectedSubBab!);
+      }
+
+      final response = await query.order('id', ascending: true);
 
       setState(() {
         _daftarSoal = List<Map<String, dynamic>>.from(response);
@@ -180,7 +218,8 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
       }
 
       // B. SIMPAN KE DATABASE
-      await supabase.from('bank_soal').insert({
+      // [UPDATE] Masukkan sub_bab ke dalam data yang dikirim
+      final dataKirim = {
         'kategori': _selectedKategori,
         'pola': _selectedPola,
         'pertanyaan': _pertanyaanController.text,
@@ -192,7 +231,10 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
           _opsiDController.text,
         ],
         'kunci': _selectedKunci,
-      });
+        'sub_bab': _selectedSubBab, // Kolom baru di database
+      };
+
+      await supabase.from('bank_soal').insert(dataKirim);
 
       // C. BERSIHKAN FORM
       _pertanyaanController.clear();
@@ -297,7 +339,6 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
         backgroundColor: Colors.redAccent,
         foregroundColor: Colors.white,
         actions: [
-          // TOMBOL LOGOUT DI POJOK KANAN ATAS
           IconButton(
             onPressed: _logout,
             icon: const Icon(Icons.logout),
@@ -331,7 +372,10 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
                                 value: value, child: Text(value));
                           }).toList(),
                           onChanged: (val) {
-                            setState(() => _selectedKategori = val!);
+                            setState(() {
+                              _selectedKategori = val!;
+                              _resetSubBab(); // Reset sub bab kalau ganti materi
+                            });
                             _ambilDaftarSoal();
                           },
                         ),
@@ -347,7 +391,10 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
                                 value: value, child: Text(value));
                           }).toList(),
                           onChanged: (val) {
-                            setState(() => _selectedPola = val!);
+                            setState(() {
+                              _selectedPola = val!;
+                              _resetSubBab(); // Reset sub bab kalau ganti pola
+                            });
                             _ambilDaftarSoal();
                           },
                         ),
@@ -355,7 +402,44 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
                     ],
                   ),
 
-                  // --- TOMBOL UPLOAD PENGANTAR ---
+                  // --- [BARU] DROPDOWN SUB-BAB ---
+                  if (_selectedSubBab != null) ...[
+                    const SizedBox(height: 15),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Pilih Materi Spesifik (Sub-Bab):",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange)),
+                          DropdownButton<String>(
+                            value: _selectedSubBab,
+                            isExpanded: true,
+                            underline: const SizedBox(),
+                            items: _dataSubBab[
+                                    "$_selectedKategori - $_selectedPola"]!
+                                .map((e) => DropdownMenuItem(
+                                    value: e,
+                                    child: Text(e,
+                                        style: const TextStyle(fontSize: 16))))
+                                .toList(),
+                            onChanged: (val) {
+                              setState(() => _selectedSubBab = val!);
+                              _ambilDaftarSoal();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
@@ -463,8 +547,9 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
                   width: double.infinity,
                   color: Colors.grey.shade200,
                   padding: const EdgeInsets.all(10),
+                  // [PERBAIKAN ERROR MERAH DISINI]
                   child: Text(
-                    "Daftar Soal Tersimpan ($_selectedKategori - $_selectedPola)",
+                    "Daftar Soal: $_selectedKategori - $_selectedPola ${_selectedSubBab != null ? '($_selectedSubBab)' : ''}",
                     style: const TextStyle(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
