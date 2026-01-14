@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'halaman_login.dart'; // Import halaman login buat logout
+import 'halaman_admin_simulasi.dart';
 
 class HalamanAdminPage extends StatefulWidget {
   const HalamanAdminPage({super.key});
@@ -338,6 +339,16 @@ class _HalamanAdminPageState extends State<HalamanAdminPage> {
             onPressed: _logout,
             icon: const Icon(Icons.logout),
             tooltip: "Keluar",
+          ), // Di dalam AppBar actions atau di body halaman admin utama
+          IconButton(
+            icon: const Icon(Icons.assignment),
+            tooltip: "Admin Simulasi",
+            onPressed: () {
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (c) => const HalamanAdminSimulasi()));
+            },
           )
         ],
       ),

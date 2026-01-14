@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class HalamanSimulasiPage extends StatefulWidget {
   const HalamanSimulasiPage({super.key});
@@ -9,110 +11,161 @@ class HalamanSimulasiPage extends StatefulWidget {
 }
 
 class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
-  // --- KONFIGURASI WAKTU ---
-  static const int durasiPerSection = 1 * 65; // 20 Menit
+  // --- KONFIGURASI ---
+  static const int durasiPerSection = 20 * 60; // 20 Menit
 
-  // --- STATE VARIABEL ---
-  int currentSectionIndex = 0;
-  int currentSoalIndex = 0;
-  int sisaWaktu = durasiPerSection;
+  // --- STATE DATA ---
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _dataTes = [];
+
+  // --- STATE PROGRESS ---
+  int _currentSectionIdx = 0;
+  int _currentPaketIdx = 0;
+  int _currentSoalIdx = 0;
+
+  // --- STATE TIMER & AUDIO ---
+  int _sisaWaktu = durasiPerSection;
   Timer? _timer;
-  int totalSkor = 0;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isAudioPlaying = false;
 
-  // VARIABLE BARU: UNTUK MENYIMPAN RIWAYAT JAWABAN
-  List<Map<String, dynamic>> laporanHasil = [];
+  // URL Audio yang sedang aktif
+  String? _currentPlayingUrl;
 
-  // --- DATA SOAL ---
-  final List<Map<String, dynamic>> dataSections = [
-    {
-      'nama': "Section 1: Istima' (Menyimak)",
-      'warna': const Color(0xFF42A5F5),
-      'soal': [
-        {
-          'tanya': 'Dengarkan audio. Apa profesi Ahmad?',
-          'opsi': ['Guru', 'Dokter', 'Insinyur', 'Pedagang'],
-          'kunci': 0 // Guru
-        },
-        {
-          'tanya': 'Dimana percakapan ini terjadi?',
-          'opsi': ['Pasar', 'Kampus', 'Rumah Sakit', 'Bandara'],
-          'kunci': 1 // Kampus
-        },
-      ]
-    },
-    {
-      'nama': "Section 2: Qira'ah (Membaca)",
-      'warna': const Color(0xFFFF9800),
-      'soal': [
-        {
-          'tanya': 'Apa gagasan utama paragraf pertama?',
-          'opsi': ['Pendidikan', 'Ekonomi', 'Sejarah', 'Budaya'],
-          'kunci': 2 // Sejarah
-        },
-        {
-          'tanya': 'Kata "Al-Madrasah" artinya...',
-          'opsi': ['Kantor', 'Sekolah', 'Rumah', 'Toko'],
-          'kunci': 1 // Sekolah
-        },
-      ]
-    },
-    {
-      'nama': "Section 3: Tarakib (Struktur)",
-      'warna': const Color(0xFF9C27B0),
-      'soal': [
-        {
-          'tanya': 'Lengkapi: Ana ... ilal madrasah.',
-          'opsi': ['Adzhabu', 'Yadzhabu', 'Tadzhabu', 'Nadzhabu'],
-          'kunci': 0 // Adzhabu
-        },
-        {
-          'tanya': 'Bentuk jamak dari "Kitabun" adalah...',
-          'opsi': ['Kitabani', 'Kutubun', 'Makatib', 'Katibun'],
-          'kunci': 1 // Kutubun
-        },
-      ]
-    },
-  ];
+  Duration _audioPosition = Duration.zero;
+  Duration _audioDuration = Duration.zero;
+
+  // --- STATE SKOR ---
+  int _totalSkor = 0;
+  List<Map<String, dynamic>> _laporanHasil = [];
 
   @override
   void initState() {
     super.initState();
-    startTimer();
+    _ambilDataDariSupabase();
+
+    // Agar audio stop total saat selesai
+    _audioPlayer.setReleaseMode(ReleaseMode.stop);
+
+    // Listener Status Player
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() => _isAudioPlaying = state == PlayerState.playing);
+      }
+    });
+
+    // Listener Durasi & Posisi
+    _audioPlayer.onDurationChanged
+        .listen((d) => setState(() => _audioDuration = d));
+    _audioPlayer.onPositionChanged
+        .listen((p) => setState(() => _audioPosition = p));
+
+    // Reset state saat audio selesai
+    _audioPlayer.onPlayerComplete.listen((event) {
+      if (mounted) {
+        setState(() {
+          _isAudioPlaying = false;
+          _audioPosition = Duration.zero;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
+  // --- LOGIKA AUDIO ---
+  void _toggleAudio(String url) async {
+    if (url.isEmpty) return;
+
+    if (_currentPlayingUrl == url && _isAudioPlaying) {
+      await _audioPlayer.pause();
+    } else {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(UrlSource(url));
+
+      setState(() {
+        _currentPlayingUrl = url;
+      });
+    }
+  }
+
+  // --- LOGIKA DATA ---
+  Future<void> _ambilDataDariSupabase() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final responsePaket = await supabase
+          .from('simulasi_paket')
+          .select('*, simulasi_soal(*)')
+          .order('urutan', ascending: true);
+
+      Map<String, List<Map<String, dynamic>>> grouped = {
+        "Istima'": [],
+        "Qira'ah": [],
+        "Tarakib": []
+      };
+
+      for (var paket in responsePaket) {
+        String section = paket['section'] ?? "Lainnya";
+        if (paket['simulasi_soal'] != null &&
+            (paket['simulasi_soal'] as List).isNotEmpty) {
+          // Sortir soal berdasarkan id
+          (paket['simulasi_soal'] as List)
+              .sort((a, b) => a['id'].compareTo(b['id']));
+          if (grouped.containsKey(section)) grouped[section]!.add(paket);
+        }
+      }
+
+      List<Map<String, dynamic>> finalData = [];
+      grouped.forEach((key, value) {
+        if (value.isNotEmpty)
+          finalData.add({'nama_section': key, 'paket_list': value});
+      });
+
+      setState(() {
+        _dataTes = finalData;
+        _isLoading = false;
+      });
+
+      if (_dataTes.isNotEmpty) startTimer();
+    } catch (e) {
+      print("Error: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // --- LOGIKA TIMER ---
   void startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (sisaWaktu > 0) {
-        setState(() {
-          sisaWaktu--;
-        });
+      if (_sisaWaktu > 0) {
+        setState(() => _sisaWaktu--);
       } else {
-        _timer?.cancel();
-        pindahSectionOtomatis();
+        _pindahSectionOtomatis();
       }
     });
   }
 
-  void pindahSectionOtomatis() {
+  void _pindahSectionOtomatis() {
+    _timer?.cancel();
+    _audioPlayer.stop();
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title:
             const Text("Waktu Habis! ⏰", style: TextStyle(color: Colors.red)),
         content: Text(
-            "Waktu untuk ${dataSections[currentSectionIndex]['nama']} telah selesai. Lanjut ke bagian berikutnya."),
+            "Waktu untuk ${_dataTes[_currentSectionIdx]['nama_section']} selesai. Lanjut?"),
         actions: [
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              lanjutKeNextSection();
+              Navigator.pop(ctx);
+              _lanjutSection();
             },
             child: const Text("Lanjut"),
           )
@@ -121,73 +174,83 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
     );
   }
 
-  void lanjutKeNextSection() {
-    if (currentSectionIndex < dataSections.length - 1) {
+  // --- LOGIKA JAWAB & NAVIGASI ---
+  void _jawabSoal(int indexOpsi, Map<String, dynamic> soalData) {
+    int kunci = soalData['kunci'];
+    bool benar = indexOpsi == kunci;
+    if (benar) _totalSkor += 10;
+
+    List<dynamic> opsi = [
+      soalData['opsi_a'],
+      soalData['opsi_b'],
+      soalData['opsi_c'],
+      soalData['opsi_d']
+    ];
+
+    _laporanHasil.add({
+      'section': _dataTes[_currentSectionIdx]['nama_section'],
+      'pertanyaan': soalData['pertanyaan'],
+      'jawaban_user': opsi[indexOpsi],
+      'jawaban_benar': opsi[kunci],
+      'status': benar
+    });
+
+    _lanjutSoal();
+  }
+
+  void _lanjutSoal() {
+    var currentSection = _dataTes[_currentSectionIdx];
+    var currentPaketList = currentSection['paket_list'] as List;
+    var currentSoalList =
+        currentPaketList[_currentPaketIdx]['simulasi_soal'] as List;
+
+    _audioPlayer.stop();
+    _currentPlayingUrl = null;
+    _audioPosition = Duration.zero;
+
+    if (_currentSoalIdx < currentSoalList.length - 1) {
+      setState(() => _currentSoalIdx++);
+    } else if (_currentPaketIdx < currentPaketList.length - 1) {
       setState(() {
-        currentSectionIndex++;
-        currentSoalIndex = 0;
-        sisaWaktu = durasiPerSection;
+        _currentPaketIdx++;
+        _currentSoalIdx = 0;
       });
-      startTimer();
+    } else if (_currentSectionIdx < _dataTes.length - 1) {
+      _tampilKonfirmasiSelesaiSection();
     } else {
-      selesaiTes();
+      _selesaiTes();
     }
   }
 
-  // --- FUNGSI JAWAB SOAL YANG DIPERBARUI ---
-  void jawabSoal(int indexOpsi) {
-    // Ambil Data Soal Saat Ini
-    var sectionSaatIni = dataSections[currentSectionIndex];
-    var soalSaatIni = sectionSaatIni['soal'][currentSoalIndex];
-
-    // Cek Benar/Salah
-    int kunci = soalSaatIni['kunci'];
-    bool isBenar = (indexOpsi == kunci);
-
-    // Hitung Skor
-    if (isBenar) {
-      totalSkor += 10;
-    }
-
-    // --- REKAM JEJAK JAWABAN (LOGGING) ---
-    laporanHasil.add({
-      'section': sectionSaatIni['nama'], // Nama Section
-      'pertanyaan': soalSaatIni['tanya'], // Soalnya apa
-      'jawaban_user': soalSaatIni['opsi'][indexOpsi], // User jawab apa
-      'jawaban_benar': soalSaatIni['opsi'][kunci], // Kunci jawabannya apa
-      'status': isBenar, // True kalau benar, False kalau salah
-    });
-
-    // Pindah Soal / Section
-    List soalList = sectionSaatIni['soal'];
-    if (currentSoalIndex < soalList.length - 1) {
+  void _lanjutSection() {
+    if (_currentSectionIdx < _dataTes.length - 1) {
       setState(() {
-        currentSoalIndex++;
+        _currentSectionIdx++;
+        _currentPaketIdx = 0;
+        _currentSoalIdx = 0;
+        _sisaWaktu = durasiPerSection;
+        _audioPlayer.stop();
+        _currentPlayingUrl = null;
       });
+      startTimer();
     } else {
-      // Jika soal habis di section ini
-      _timer?.cancel();
-
-      // Cek apakah ini section terakhir?
-      if (currentSectionIndex == dataSections.length - 1) {
-        selesaiTes(); // Selesai semua
-      } else {
-        _tampilKonfirmasiSelesaiSection(); // Lanjut ke section berikutnya
-      }
+      _selesaiTes();
     }
   }
 
   void _tampilKonfirmasiSelesaiSection() {
+    _timer?.cancel();
+    _audioPlayer.stop();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text("Bagian Selesai"),
         content: const Text("Lanjut ke bagian berikutnya?"),
         actions: [
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              lanjutKeNextSection();
+              Navigator.pop(ctx);
+              _lanjutSection();
             },
             child: const Text("Lanjut"),
           ),
@@ -196,313 +259,475 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
     );
   }
 
-  void selesaiTes() {
-    // Navigasi ke Halaman Hasil membawa Data Skor DAN Data Laporan
+  void _selesaiTes() {
+    _timer?.cancel();
+    _audioPlayer.stop();
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => HasilSimulasiPage(
-          skorAkhir: totalSkor,
-          laporan: laporanHasil, // KITA KIRIM DATA LAPORANNYA DI SINI
-        ),
-      ),
+          builder: (context) =>
+              HasilSimulasiPage(skorAkhir: _totalSkor, laporan: _laporanHasil)),
     );
   }
 
-  String get formatWaktu {
-    int menit = sisaWaktu ~/ 60;
-    int detik = sisaWaktu % 60;
+  String get _formatWaktu {
+    int menit = _sisaWaktu ~/ 60;
+    int detik = _sisaWaktu % 60;
     return "${menit.toString().padLeft(2, '0')}:${detik.toString().padLeft(2, '0')}";
+  }
+
+// --- HITUNG POSISI SOAL (Hanya Tipe PG) ---
+  String _getIndikatorSoal() {
+    int totalSoalPG = 0;
+    int currentPGIndex = 0;
+
+    // Cek apakah item saat ini adalah instruksi?
+    var currentItem = (_dataTes[_currentSectionIdx]['paket_list']
+        as List)[_currentPaketIdx]['simulasi_soal'][_currentSoalIdx];
+    if (currentItem['tipe'] == 'instruksi') {
+      return "Petunjuk"; // Jika sedang instruksi, tampilkan teks "Petunjuk"
+    }
+
+    var section = _dataTes[_currentSectionIdx];
+    var listPaket = section['paket_list'] as List;
+
+    for (int i = 0; i < listPaket.length; i++) {
+      var p = listPaket[i];
+      var listS = p['simulasi_soal'] as List;
+
+      for (int j = 0; j < listS.length; j++) {
+        var item = listS[j];
+        if (item['tipe'] != 'instruksi') {
+          totalSoalPG++; // Hitung total soal PG di section ini
+
+          // Cek posisi kita sekarang
+          if (i < _currentPaketIdx ||
+              (i == _currentPaketIdx && j < _currentSoalIdx)) {
+            currentPGIndex++;
+          }
+        }
+      }
+    }
+
+    // Return format "1 / 10" (Posisi + 1 karena index mulai dari 0)
+    return "${currentPGIndex + 1} / $totalSoalPG";
   }
 
   @override
   Widget build(BuildContext context) {
-    final sectionData = dataSections[currentSectionIndex];
-    final List soalList = sectionData['soal'];
-    final soalCurrent = soalList[currentSoalIndex];
+    // 1. Cek Loading & Data Kosong
+    if (_isLoading)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_dataTes.isEmpty)
+      return const Scaffold(
+          body: Center(child: Text("Belum ada soal simulasi.")));
+
+    // 2. Ambil Data Saat Ini
+    var section = _dataTes[_currentSectionIdx];
+    var paket = section['paket_list'][_currentPaketIdx];
+    var item = paket['simulasi_soal'][_currentSoalIdx];
+
+    // 3. Logika & Variabel
+    bool isInstruksi = item['tipe'] == 'instruksi'; // Cek tipe dari database
+    String teksPertanyaan = (item['pertanyaan'] ?? '-').toString().trim();
+    bool textIsDash = teksPertanyaan == '-'; // Apakah teksnya cuma strip?
+    bool hasItemAudio =
+        item['audio_url'] != null && item['audio_url'].toString().isNotEmpty;
+    bool isAudioActive =
+        _isAudioPlaying && _currentPlayingUrl == item['audio_url'];
+
+    // Warna Tema
+    Color warnaTema = Colors.blue;
+    if (section['nama_section'] == "Qira'ah") warnaTema = Colors.orange;
+    if (section['nama_section'] == "Tarakib") warnaTema = Colors.purple;
 
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
-        elevation: 0,
         title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Simulasi TOSA",
-                style: TextStyle(
-                    color: Colors.black, fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Text(
+                section['nama_section'],
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: sisaWaktu < 60 ? Colors.red[100] : Colors.blue[50],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.timer, size: 16, color: Colors.blue),
-                  const SizedBox(width: 6),
-                  Text(formatWaktu,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.blue)),
-                ],
-              ),
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(20)),
+              child: Text(_getIndikatorSoal(),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                      fontSize: 14)),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                  color: _sisaWaktu < 60
+                      ? Colors.red.shade100
+                      : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(15)),
+              child: Row(children: [
+                const Icon(Icons.timer, size: 16),
+                const SizedBox(width: 5),
+                Text(_formatWaktu,
+                    style: const TextStyle(fontWeight: FontWeight.bold))
+              ]),
             )
           ],
         ),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        automaticallyImplyLeading: false,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: sectionData['warna'],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Text(sectionData['nama'],
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 5),
-                  Text("Soal ${currentSoalIndex + 1} / ${soalList.length}",
-                      style: const TextStyle(color: Colors.white70)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-            Text(soalCurrent['tanya'],
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 30),
-            ...List.generate(soalCurrent['opsi'].length, (index) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: ElevatedButton(
-                  onPressed: () => jawabSoal(index),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: BorderSide(color: Colors.grey.shade300),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Text(soalCurrent['opsi'][index],
-                      style: const TextStyle(fontSize: 16)),
+            // ============================================================
+            // BAGIAN 1: STIMULUS (PAKET INDUK)
+            // ============================================================
+// ============================================================
+            // BAGIAN 1: STIMULUS (PAKET INDUK) - LOGIKA BARU
+            // ============================================================
+            Builder(builder: (context) {
+              // Cek Judul Paket
+              bool adaJudul = paket['judul_paket'] != null &&
+                  paket['judul_paket'].toString().trim().isNotEmpty &&
+                  paket['judul_paket'].toString().trim() != '-';
+
+              // Cek Konten Teks (Qira'ah) - Pastikan bukan "-"
+              bool adaTeks = paket['jenis_konten'] == 'teks' &&
+                  paket['konten_url'] != null &&
+                  paket['konten_url'].toString().trim().isNotEmpty &&
+                  paket['konten_url'].toString().trim() !=
+                      '-'; // Tambahan cek "-"
+
+              // Cek Audio Induk
+              bool adaAudio = paket['jenis_konten'] == 'audio' &&
+                  paket['konten_url'] != null;
+
+              // Jika semua kosong, jangan tampilkan apa-apa
+              if (!adaJudul && !adaTeks && !adaAudio) {
+                return const SizedBox.shrink();
+              }
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                    color: warnaTema.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: warnaTema.withOpacity(0.5))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header Kecil (Opsional)
+                    Text(
+                      paket['jenis_konten'] == 'teks'
+                          ? "Bacaan / Nash"
+                          : "Stimulus / Pengantar Soal",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: warnaTema),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // A. TAMPILKAN JUDUL PAKET (Jika Ada)
+                    if (adaJudul) ...[
+                      Text(paket['judul_paket'],
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.justify,
+                          textDirection: TextDirection.rtl),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // B. TAMPILKAN TEKS BACAAN (QIRA'AH)
+                    if (adaTeks) ...[
+                      Container(
+                          constraints: const BoxConstraints(
+                              maxHeight: 300), // Scrollable
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade300)),
+                          child: SingleChildScrollView(
+                            child: Text(paket['konten_url'],
+                                style: const TextStyle(
+                                    fontSize: 18,
+                                    fontFamily: 'Arial',
+                                    height: 1.8 // Spasi antar baris enak dibaca
+                                    ),
+                                textAlign: TextAlign.justify,
+                                textDirection: TextDirection.rtl),
+                          ))
+                    ],
+
+                    // C. TAMPILKAN AUDIO INDUK
+                    if (adaAudio) ...[
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        IconButton(
+                            icon: Icon((_isAudioPlaying &&
+                                    _currentPlayingUrl == paket['konten_url'])
+                                ? Icons.pause
+                                : Icons.play_arrow),
+                            onPressed: () => _toggleAudio(paket['konten_url'])),
+                        const Expanded(
+                            child: Text("Audio Induk / Stimulus",
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                      ])
+                    ]
+                  ],
                 ),
               );
             }),
+
+            // ============================================================
+            // BAGIAN 2: ITEM (SOAL / AUDIO UTAMA)
+            // ============================================================
+
+            // JIKA: Teks "-" DAN Ada Audio -> TAMPILKAN PLAYER BESAR (UI BIRU KONSISTEN)
+            if (hasItemAudio && textIsDash) ...[
+              SizedBox(
+                height: 400, // Atur tinggi sesuai kebutuhan
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 1. Judul Besar
+                    const Text(
+                      "Simak Audio Pengantar",
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 2. Sub-judul / Instruksi
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 30),
+                      child: Text(
+                        item['pertanyaan'] != '-'
+                            ? item['pertanyaan']
+                            : "Dengarkan materi ini baik-baik sebelum memulai menjawab soal latihan.",
+                        style: TextStyle(
+                            fontSize: 14, color: Colors.grey[600], height: 1.5),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+
+                    // 3. Tombol Play Besar di Tengah (Lingkaran Biru)
+                    GestureDetector(
+                      onTap: () => _toggleAudio(item['audio_url']),
+                      child: Container(
+                        padding: const EdgeInsets.all(25),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50, // Lingkaran biru muda
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isAudioActive
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 80, // Ukuran icon sangat besar
+                          color: Colors.blue, // Warna icon biru
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+
+                    // 4. Slider & Durasi (Sejajar)
+                    if (isAudioActive) // Tampilkan slider hanya jika aktif
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            // Waktu Berjalan (misal: 00:15)
+                            Text(
+                              _audioPosition
+                                  .toString()
+                                  .split('.')
+                                  .first
+                                  .substring(2),
+                              style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500),
+                            ),
+
+                            // Slider
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 4,
+                                  thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 8),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                      overlayRadius: 16),
+                                  activeTrackColor: Colors.blue,
+                                  inactiveTrackColor: Colors.blue.shade100,
+                                  thumbColor: Colors.blue,
+                                ),
+                                child: Slider(
+                                  value: _audioPosition.inSeconds.toDouble(),
+                                  max: _audioDuration.inSeconds.toDouble() > 0
+                                      ? _audioDuration.inSeconds.toDouble()
+                                      : 1,
+                                  onChanged: (v) => _audioPlayer
+                                      .seek(Duration(seconds: v.toInt())),
+                                ),
+                              ),
+                            ),
+
+                            // Total Durasi (misal: 02:30)
+                            Text(
+                              _audioDuration
+                                  .toString()
+                                  .split('.')
+                                  .first
+                                  .substring(2),
+                              style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ]
+            // JIKA TIDAK (Teks Biasa) -> TAMPILAN STANDAR
+            else ...[
+              if (hasItemAudio)
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 15),
+                    child: ElevatedButton.icon(
+                      onPressed: () => _toggleAudio(item['audio_url']),
+                      icon: Icon(
+                          isAudioActive ? Icons.pause : Icons.play_circle_fill),
+                      label:
+                          Text(isAudioActive ? "Pause Audio" : "Putar Audio"),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade50,
+                          foregroundColor: Colors.orange.shade800,
+                          elevation: 0,
+                          side: BorderSide(color: Colors.orange.shade200)),
+                    ),
+                  ),
+                ),
+              if (!textIsDash)
+                Text(teksPertanyaan,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Arial'),
+                    textAlign: TextAlign.center,
+                    textDirection: TextDirection.rtl),
+            ],
+
+            const SizedBox(height: 30),
+
+            // ============================================================
+            // BAGIAN 3: TOMBOL JAWABAN (A-B-C-D) ATAU LANJUT
+            // ============================================================
+
+            if (isInstruksi)
+              // TOMBOL LANJUT
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                    onPressed: _lanjutSoal,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue), // Konsisten Biru
+                    child: const Text("LANJUT (Selesai Mendengarkan)",
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold))),
+              )
+            else
+              // TOMBOL JAWABAN
+              Column(
+                children: [
+                  _buildOpsiButton(0, item['opsi_a']),
+                  _buildOpsiButton(1, item['opsi_b']),
+                  _buildOpsiButton(2, item['opsi_c']),
+                  _buildOpsiButton(3, item['opsi_d']),
+                ],
+              )
           ],
         ),
       ),
     );
   }
-}
 
-// --- CLASS BARU UNTUK HASIL & PEMBAHASAN ---
-
-class HasilSimulasiPage extends StatelessWidget {
-  final int skorAkhir;
-  // Menerima data laporan
-  final List<Map<String, dynamic>> laporan;
-
-  const HasilSimulasiPage({
-    super.key,
-    required this.skorAkhir,
-    required this.laporan,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('assets/images/peringkat.png', width: 120),
-              const SizedBox(height: 24),
-              const Text("Simulasi Selesai!",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              const Text("Estimasi Skor TOSA Anda:",
-                  style: TextStyle(color: Colors.grey)),
-              Text("$skorAkhir",
-                  style: const TextStyle(
-                      fontSize: 60,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue)),
-
-              const SizedBox(height: 40),
-
-              // TOMBOL LIHAT PEMBAHASAN (BARU)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    // Buka Halaman Pembahasan
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            HalamanPembahasanPage(laporan: laporan),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.list_alt),
-                  label: const Text("Lihat Pembahasan"),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: Colors.blue),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // TOMBOL KEMBALI
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text("Kembali ke Dashboard",
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              )
-            ],
-          ),
+  Widget _buildOpsiButton(int index, String? text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () {
+            var section = _dataTes[_currentSectionIdx];
+            var paket = section['paket_list'][_currentPaketIdx];
+            var soal = paket['simulasi_soal'][_currentSoalIdx];
+            _jawabSoal(index, soal);
+          },
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: Colors.grey.shade300))),
+          child: Text(text ?? "-",
+              style: const TextStyle(fontSize: 16),
+              textDirection: TextDirection.rtl),
         ),
       ),
     );
   }
 }
 
-class HalamanPembahasanPage extends StatelessWidget {
+class HasilSimulasiPage extends StatelessWidget {
+  final int skorAkhir;
   final List<Map<String, dynamic>> laporan;
-
-  const HalamanPembahasanPage({super.key, required this.laporan});
+  const HasilSimulasiPage(
+      {super.key, required this.skorAkhir, required this.laporan});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Pembahasan Soal",
-            style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.black),
-        elevation: 1,
+      appBar: AppBar(title: const Text("Hasil Simulasi")),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text("Skor Anda", style: TextStyle(fontSize: 20)),
+            Text("$skorAkhir",
+                style: const TextStyle(
+                    fontSize: 60,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue)),
+            const SizedBox(height: 20),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Kembali"))
+          ],
+        ),
       ),
-      body: laporan.isEmpty
-          ? const Center(child: Text("Belum ada data jawaban."))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: laporan.length,
-              itemBuilder: (context, index) {
-                final item = laporan[index];
-                final bool isBenar = item['status'];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  // PERBAIKAN ADA DI SINI:
-                  // 'side' kita masukkan ke dalam RoundedRectangleBorder
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: isBenar ? Colors.green : Colors.red,
-                      width: 1,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Label Section (Kecil di atas)
-                        Text(item['section'],
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-
-                        // Pertanyaan
-                        Text(item['pertanyaan'],
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15)),
-                        const SizedBox(height: 12),
-                        const Divider(),
-                        const SizedBox(height: 8),
-
-                        // Jawaban Kamu
-                        Row(
-                          children: [
-                            Icon(isBenar ? Icons.check_circle : Icons.cancel,
-                                color: isBenar ? Colors.green : Colors.red,
-                                size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text.rich(TextSpan(children: [
-                                const TextSpan(
-                                    text: "Jawaban Kamu: ",
-                                    style: TextStyle(color: Colors.grey)),
-                                TextSpan(
-                                    text: item['jawaban_user'],
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: isBenar
-                                            ? Colors.green
-                                            : Colors.red)),
-                              ])),
-                            ),
-                          ],
-                        ),
-
-                        // Kunci Jawaban (Hanya muncul jika salah)
-                        if (!isBenar) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(Icons.key,
-                                  color: Colors.green, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text.rich(TextSpan(children: [
-                                  const TextSpan(
-                                      text: "Kunci Jawaban: ",
-                                      style: TextStyle(color: Colors.grey)),
-                                  TextSpan(
-                                      text: item['jawaban_benar'],
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green)),
-                                ])),
-                              ),
-                            ],
-                          ),
-                        ]
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
     );
   }
 }
