@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'halaman_baca_pdf.dart';
 
 class HalamanKuisPage extends StatefulWidget {
   final String title;
@@ -54,7 +55,10 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     _ambilSoal();
 
     // Tampilkan instruksi jika ada
-    if (widget.instruksi != null && widget.instruksi!.isNotEmpty) {
+    if (widget.instruksi != null &&
+        widget.instruksi!.isNotEmpty &&
+        widget.instruksi != "langsung") {
+      // Tampilkan Dialog setelah halaman selesai dibangun
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tampilkanDialogInstruksi();
       });
@@ -326,9 +330,63 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     } catch (e) {}
   }
 
+// ===============================================================
+  // 1. FUNGSI LOGIKA PENAMAAN FILE PDF (SESUAI REQUEST KAMU)
+  // ===============================================================
+  String _generateNamaFilePdf() {
+    String kat = widget.kategoriFilter; // Istima', Tarakib, Qira'ah
+    String pol = widget.polaFilter; // Pola 1, Pola 2, Pola 3
+    String? sub = widget.subBabFilter; // Mubtada Khabar, dll
+
+    // A. QIRA'AH (Semua pola jadi satu file: 2_kj.pdf)
+    if (kat == "Qira'ah") {
+      return "2_kj.pdf";
+    }
+
+    // B. ISTIMA' (1_kj_pola1.pdf, 1_kj_pola2.pdf, dst)
+    if (kat == "Istima'") {
+      // Ubah "Pola 1" jadi "pola1" (kecil semua, tanpa spasi)
+      String suffix = pol.toLowerCase().replaceAll(" ", "");
+      return "1_kj_$suffix.pdf";
+    }
+
+    // C. TARAKIB
+    if (kat == "Tarakib") {
+      // Jika Pola 1 atau Pola 2 -> 3_kj_pola1.pdf / 3_kj_pola2.pdf
+      if (pol != "Pola 3") {
+        String suffix = pol.toLowerCase().replaceAll(" ", "");
+        return "3_kj_$suffix.pdf";
+      }
+      // Jika Pola 3 (Per Materi) -> 3_kj_pola3_1.pdf, dst
+      else {
+        // Daftar ini HARUS SAMA URUTANNYA dengan yang ada di main.dart / database
+        List<String> urutanMateri = [
+          "Mubtada Khabar", // _1
+          "Kana wa Akhwatuha", // _2
+          "Inna wa Akhwatuha", // _3
+          "Fi'il Fa'il", // _4
+          "Maf'ul bih", // _5
+          "Na'at wa Man'ut", // _6
+          "Tawabi'", // _7
+          "Maf'ulat", // _8
+          "A'dad" // _9
+        ];
+
+        int index = urutanMateri.indexOf(sub ?? "") + 1; // +1 biar mulai dari 1
+        if (index == 0) index = 1; // Default kalau gak ketemu
+
+        return "3_kj_pola3_$index.pdf";
+      }
+    }
+
+    return ""; // Default kosong
+  }
+
+// ===============================================================
+  // 2. MODIFIKASI TAMPILAN SKOR (TAMBAH TOMBOL LIHAT PEMBAHASAN)
+  // ===============================================================
   void _tampilkanSkor() {
     int totalSoal = _soalList.length;
-    // Hindari pembagian nol
     double nilaiAkhir = totalSoal > 0 ? (_score / (totalSoal * 10)) * 100 : 0;
 
     String pesan = "";
@@ -340,7 +398,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
       emoji = "🏆";
       warna = Colors.green;
     } else if (nilaiAkhir >= 80) {
-      pesan = "Jayyid Jiddan! Sangat Bagus!";
+      pesan = "Jayyid Jiddan!";
       emoji = "🎉";
       warna = Colors.blue;
     } else if (nilaiAkhir >= 60) {
@@ -348,7 +406,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
       emoji = "👍";
       warna = Colors.orange;
     } else {
-      pesan = "Hamasah! Ayo Belajar Lagi!";
+      pesan = "Hamasah!";
       emoji = "💪";
       warna = Colors.redAccent;
     }
@@ -373,29 +431,69 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
                 textAlign: TextAlign.center,
                 style:
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          Center(
-            child: SizedBox(
+
+            const SizedBox(height: 20),
+            const Divider(),
+
+            // --- TOMBOL LIHAT PEMBAHASAN (Updated) ---
+            SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pop(context); // Tutup Dialog
-                  Navigator.pop(context); // Kembali ke Halaman Materi
+                  // 1. Generate nama file
+                  String namaFile = _generateNamaFilePdf();
+
+                  // 2. Gabungkan dengan path folder aset kamu (assets/pdfs/)
+                  String fullPath = "assets/pdfs/$namaFile";
+
+                  // 3. Buka HalamanBacaPdf yang sudah kamu buat
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => HalamanBacaPdf(
+                        judul: "Pembahasan Soal",
+                        pathPdf: fullPath, // Kirim path lengkap
+                      ),
+                    ),
+                  );
                 },
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: warna,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10))),
-                child: const Text("Kembali ke Materi",
+                icon: const Icon(Icons.description, color: Colors.white),
+                label: const Text("LIHAT PEMBAHASAN",
                     style: TextStyle(
                         color: Colors.white, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green, // Warna Hijau
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
-          )
-        ],
+            const SizedBox(height: 10),
+
+            // --- TOMBOL KEMBALI (Tetap sama) ---
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Tutup Dialog
+                  Navigator.pop(context); // Kembali ke Materi
+                },
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: warna),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                child: Text("Selesai & Kembali",
+                    style:
+                        TextStyle(color: warna, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // --------------------------------------
+          ],
+        ),
       ),
     );
   }

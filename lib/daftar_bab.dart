@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'halaman_materi.dart';
-import 'halaman_kuis.dart'; // Pastikan import ini ada jika langsung ke kuis, atau pengantar
+import 'halaman_kuis.dart';
 import 'halaman_pengantar.dart';
 
 class DaftarBabPage extends StatelessWidget {
@@ -41,7 +41,10 @@ class DaftarBabPage extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      // --- TOMBOL SATU UNTUK SEMUA (KHUSUS QIRA'AH) ---
+
+      // ============================================================
+      // BAGIAN TOMBOL BAWAH (KHUSUS QIRA'AH)
+      // ============================================================
       bottomNavigationBar: isQiraah
           ? Container(
               padding: const EdgeInsets.all(20),
@@ -57,48 +60,55 @@ class DaftarBabPage extends StatelessWidget {
               ),
               child: ElevatedButton.icon(
                 onPressed: () {
-                  // Arahkan ke latihan gabungan / umum
+                  // KHUSUS QIRA'AH: LANGSUNG KE KUIS (Tanpa Dialog)
+                  // Kita paksa ambil soal "Pola 1" karena Pola lain kosong
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => HalamanPengantarPage(
-                        title: "Latihan Qira'ah (Semua Pola)",
+                      builder: (context) => HalamanKuisPage(
+                        title: "Latihan Qira'ah",
                         kategoriFilter: "Qira'ah",
-                        // Gunakan filter khusus, misalnya "Semua" atau ambil pola 1 sebagai default
-                        // Nanti di query database harus disesuaikan agar mengambil semua soal Qira'ah
-                        polaFilter: "Semua",
-                        kodeKategori: kodeKategoriFile,
-                        kodePola: "all",
+                        polaFilter: "Pola 1", // <--- KITA PAKSA POLA 1
+                        instruksi:
+                            "langsung", // <--- Kode rahasia agar dialog tidak muncul
                       ),
                     ),
                   );
                 },
                 icon: const Icon(Icons.play_circle_fill, color: Colors.white),
-                label: const Text("KERJAKAN LATIHAN (SEMUA POLA)",
+                label: const Text("KERJAKAN LATIHAN",
                     style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: color, // Sesuaikan warna tema
+                  backgroundColor: color,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             )
-          : null, // Jika bukan Qira'ah, tidak ada tombol bawah
+          : null,
+
       body: ListView.builder(
         padding: const EdgeInsets.all(20),
         itemCount: dataBab.length,
         itemBuilder: (context, index) {
-          // --- LOGIKA PENGECEKAN ---
+          // Cek Tarakib Pola 3 (Index ke-2)
           bool isTarakibPola3 = (kategoriDatabase == "Tarakib" && index == 2);
 
-          // Sembunyikan tombol latihan di list JIKA:
-          // 1. Ini adalah Tarakib Pola 3 (karena format drag drop khusus/belum ada)
-          // 2. ATAU Ini adalah Qira'ah (karena tombolnya sudah dipindah ke bawah)
-          bool hideLatihanButton = isTarakibPola3 || isQiraah;
+          // 1. LOGIKA MENYEMBUNYIKAN TOMBOL KECIL (DI LIST)
+          // Sembunyikan tombol kecil JIKA:
+          // - Tarakib Pola 3 (karena latihannya ada di dalam materi)
+          // - ATAU Qira'ah (karena tombolnya SUDAH ADA DI BAWAH LAYAR)
+          bool hideTombolLatihanDiSini = isTarakibPola3 || isQiraah;
+
+          // 2. LOGIKA TOMBOL DI HALAMAN DALAM (DAFTAR MATERI)
+          // Tampilkan tombol per-materi JIKA:
+          // - BUKAN Qira'ah. (Qira'ah bersih dari tombol latihan di dalam materi)
+          // - Tarakib Pola 3 akan jadi TRUE di sini, makanya nanti muncul di dalam.
+          bool showTombolLatihanDiDalam = !isQiraah;
 
           return Container(
             margin: const EdgeInsets.only(bottom: 20),
@@ -138,7 +148,10 @@ class DaftarBabPage extends StatelessWidget {
                               builder: (context) => DaftarMateriPage(
                                 title: "Materi Bab ${index + 1}",
                                 dataMateri: dataBab[index]['sub_bab'] ?? [],
-                                showLatihanButton: !hideLatihanButton,
+
+                                // Kirim logika tombol dalam ke halaman materi
+                                showLatihanButton: showTombolLatihanDiDalam,
+
                                 kategoriInfo: {
                                   'kategori': kategoriDatabase,
                                   'pola': "Pola ${index + 1}",
@@ -164,8 +177,9 @@ class DaftarBabPage extends StatelessWidget {
                       ),
                     ),
 
-                    // TOMBOL LATIHAN (Hanya Muncul Jika TIDAK disembunyikan)
-                    if (!hideLatihanButton) ...[
+                    // TOMBOL KERJAKAN LATIHAN (KECIL)
+                    // Hanya muncul jika tidak disembunyikan oleh logika di atas
+                    if (!hideTombolLatihanDiSini) ...[
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
@@ -173,18 +187,51 @@ class DaftarBabPage extends StatelessWidget {
                             String polaDB = "Pola ${index + 1}";
                             String kodePolFile = "pola${index + 1}";
 
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => HalamanPengantarPage(
-                                  title: "Latihan $polaDB",
-                                  kategoriFilter: kategoriDatabase,
-                                  polaFilter: polaDB,
-                                  kodeKategori: kodeKategoriFile,
-                                  kodePola: kodePolFile,
+                            // --- LOGIKA PEMBAGIAN NAVIGASI ---
+
+                            // KASUS 1: ISTIMA' (Butuh Audio Pengantar Dulu)
+                            if (kategoriDatabase == "Istima'") {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => HalamanPengantarPage(
+                                    title: "Latihan $polaDB",
+                                    kategoriFilter: kategoriDatabase,
+                                    polaFilter: polaDB,
+                                    kodeKategori: kodeKategoriFile,
+                                    kodePola: kodePolFile,
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
+                            // KASUS 2: TARAKIB (Langsung Kuis + Dialog Instruksi)
+                            else if (kategoriDatabase == "Tarakib") {
+                              // Ambil teks instruksi dari dataBab di main.dart
+                              // Kita ambil dari sub-bab pertama sebagai perwakilan
+                              String teksInstruksi = "";
+                              try {
+                                // Ambil instruksi dari materi pertama di pola ini
+                                teksInstruksi = dataBab[index]['sub_bab'][0]
+                                        ['instruksi'] ??
+                                    "";
+                              } catch (e) {
+                                teksInstruksi = "Kerjakan soal dengan teliti.";
+                              }
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => HalamanKuisPage(
+                                    title: "Latihan $polaDB",
+                                    kategoriFilter: kategoriDatabase,
+                                    polaFilter: polaDB,
+
+                                    // Kirim teks instruksi Arab ke halaman kuis
+                                    instruksi: teksInstruksi,
+                                  ),
+                                ),
+                              );
+                            }
                           },
                           icon: Image.asset('assets/icons/latihan.png',
                               width: 18, color: Colors.white),

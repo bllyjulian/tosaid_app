@@ -275,8 +275,11 @@ class HomePageContent extends StatelessWidget {
                                     'judul_arab': "Ta' yinu al Maudhu",
                                     'judul_latin': 'Menentukan topik bacaan',
                                     'file_pdf':
-                                        'assets/pdfs/2_pola1_materi1.pdf'
-                                  }
+                                        'assets/pdfs/2_pola1_materi1.pdf',
+                                    'instruksi': '''
+langsung
+''',
+                                  },
                                 ],
                                 'latihan': [],
                               },
@@ -306,7 +309,7 @@ class HomePageContent extends StatelessWidget {
                                 'latihan': [],
                               },
                               {
-                                'judul': "Istinbāṭu an-Nash",
+                                'judul': "Istinbatu an-Nash",
                                 'sub_bab': [
                                   {
                                     'judul_arab': "اسْتِنْبَاطُ النَّصِّ",
@@ -371,7 +374,12 @@ class HomePageContent extends StatelessWidget {
                                     'judul_arab': "تَكْمِيلُ الْجُمْلَةِ",
                                     'judul_latin': 'Melengkapi kalimat',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola1_materi1.pdf'
+                                        'assets/pdfs/3_pola1_materi1.pdf',
+                                    'instruksi': '''
+فِي هَذَا القِسْم تُطْلَبُ أَنْ تُكَمِّلَ الْجُمْلَةَ بِالْمُفْرُدَاتِ وَالْقَوَاعِدِ الصَّحِيْحَةِ إِخْتَرِ الْكَلِمَةَ
+الْمُنَاسِبَةَ بَيْنَ (أ)، (ب)، (ج)، و (د) لِلْجُمَلِ الآتِيَةِ !a
+
+''',
                                   }
                                 ],
                                 'latihan': [],
@@ -383,8 +391,13 @@ class HomePageContent extends StatelessWidget {
                                     'judul_arab': "تَحْلِيلُ الأَخْطَاءِ",
                                     'judul_latin': 'Mengidentifikasi kesalahan',
                                     'file_pdf':
-                                        'assets/pdfs/3_pola2_materi1.pdf'
-                                  }
+                                        'assets/pdfs/3_pola2_materi1.pdf',
+                                    'instruksi': '''
+فَهُمُ التَرَاكِيْبِ اللُّغَوِيَةِ
+فِي هَذَا القِسْم تُطْلَبُ أَنْ تُحَلَّلَ الكَلِمَةَ الْخَطِيئَةَ فِي الْجُمِلَةِ مِنْ نَاحِيَةِ قَوَاعِدِهَا.
+اخْتَرَ الْكَلِمَةَ الْخَطِيئَةَ بَيْنَ (أ)، (ب)، (ج)، و (د) لِلْجُمَل الآتية !
+'''
+                                  },
                                 ],
                                 'latihan': [],
                               },
