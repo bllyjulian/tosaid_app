@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'data_konversi_tosa.dart'; // <--- Tambahkan ini
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HalamanSimulasiPage extends StatefulWidget {
   const HalamanSimulasiPage({super.key});
@@ -306,16 +307,44 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
         benarTarakib: benarTarakib,
         benarQiraah: benarQiraah);
 
-    // 3. Simpan ke Database Supabase (Kirim UID Firebase)
+    // ============================================================
+    // LANGKAH TAMBAHAN: AMBIL AVATAR DARI FIRESTORE DULU
+    // Biar Leaderboard Supabase kebagian gambarnya juga
+    // ============================================================
+    String? currentAvatarUrl;
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userFirebase.uid)
+          .get();
+
+      if (userDoc.exists) {
+        currentAvatarUrl = userDoc.get('avatar_url');
+      }
+    } catch (e) {
+      print("Gagal ambil avatar dari Firestore (Pake default nanti): $e");
+    }
+    // ============================================================
+
+    // 3. Simpan ke Database Supabase
     try {
       final supabase = Supabase.instance.client;
 
-      // Ambil nama dari Firebase (displayName) atau Email, atau Default
       String namaUser =
           userFirebase.displayName ?? userFirebase.email ?? "Siswa Firebase";
 
+      // Update Profil Siswa di Supabase (Termasuk Avatar sekarang!)
+      await supabase.from('profil_siswa').upsert({
+        'id': userFirebase.uid,
+        'nama': namaUser,
+        'email': userFirebase.email,
+        'avatar_url':
+            currentAvatarUrl, // <--- INI KUNCINYA! Kirim avatar ke Supabase
+      });
+
+      // Simpan Skor
       await supabase.from('riwayat_skor').insert({
-        'user_id': userFirebase.uid, // <--- ID STRING DARI FIREBASE
+        'user_id': userFirebase.uid,
         'nama_siswa': namaUser,
         'skor_akhir': skorFinalTosa,
         'predikat': _hitungPredikat(skorFinalTosa),

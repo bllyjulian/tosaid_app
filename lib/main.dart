@@ -607,6 +607,7 @@ Pilihan jawaban:
 
 // === WIDGETS PENDUKUNG ===
 
+// === WIDGET HEADER (Full Code) ===
 class HeaderSection extends StatefulWidget {
   const HeaderSection({super.key});
 
@@ -616,7 +617,7 @@ class HeaderSection extends StatefulWidget {
 
 class _HeaderSectionState extends State<HeaderSection> {
   String _namaUser = "Loading...";
-  String _levelUser = "Level 1 - Mubtadi";
+  String? _avatarUrl; // Variabel untuk menyimpan path/url foto
 
   @override
   void initState() {
@@ -633,19 +634,39 @@ class _HeaderSectionState extends State<HeaderSection> {
             .doc(user.uid)
             .get();
 
-        if (userDoc.exists) {
+        if (mounted) {
           setState(() {
-            _namaUser = userDoc.get('nama');
-          });
-        } else {
-          setState(() {
-            _namaUser = user.displayName ?? "User";
+            if (userDoc.exists) {
+              var data = userDoc.data() as Map<String, dynamic>;
+              // Ambil Nama
+              _namaUser = data['nama'] ?? user.displayName ?? "User";
+              // Ambil Foto (bisa link http atau path assets)
+              _avatarUrl = data['avatar_url'];
+            } else {
+              _namaUser = user.displayName ?? "User";
+            }
           });
         }
       } catch (e) {
-        setState(() => _namaUser = "User");
+        if (mounted) setState(() => _namaUser = "User");
       }
     }
+  }
+
+  // --- FUNGSI PINTAR UNTUK MENENTUKAN SUMBER GAMBAR ---
+  ImageProvider _getAvatarImage() {
+    if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      // 1. Jika link internet (dari Google/Upload lama)
+      if (_avatarUrl!.startsWith('http')) {
+        return NetworkImage(_avatarUrl!);
+      }
+      // 2. Jika path aset lokal (pilihan Avatar 1-10)
+      else {
+        return AssetImage(_avatarUrl!);
+      }
+    }
+    // 3. Default jika belum punya foto
+    return const AssetImage('assets/images/profil.png');
   }
 
   @override
@@ -653,13 +674,18 @@ class _HeaderSectionState extends State<HeaderSection> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        // --- BAGIAN KIRI (FOTO & NAMA) ---
         Row(
           children: [
-            const CircleAvatar(
+            // Lingkaran Foto
+            CircleAvatar(
               radius: 26,
-              backgroundImage: AssetImage('assets/images/profil.png'),
+              backgroundColor: Colors.grey[200],
+              backgroundImage:
+                  _getAvatarImage(), // Panggil fungsi pintar di sini
             ),
             const SizedBox(width: 12),
+            // Teks Nama & Level
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -667,25 +693,31 @@ class _HeaderSectionState extends State<HeaderSection> {
                   "Halo, $_namaUser!",
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
                 ),
-                Text(_levelUser,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text(
+                  "Level 1 - Mubtadi",
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
             ),
           ],
         ),
+
+        // --- BAGIAN KANAN (KOIN/XP) ---
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-              color: const Color(0xFFFFF8E1),
-              borderRadius: BorderRadius.circular(20)),
+            color: const Color(0xFFFFF8E1), // Warna background kuning muda
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Row(
             children: [
               Image.asset('assets/icons/koin.png', width: 20),
               const SizedBox(width: 6),
-              const Text("1250 XP",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const Text(
+                "1250 XP",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             ],
           ),
         )

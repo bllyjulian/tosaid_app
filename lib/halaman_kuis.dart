@@ -100,6 +100,19 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         .replaceAll('آ', 'ا')
         .trim()
         .replaceAll(RegExp(r'\s+'), ' ');
+  } // Fungsi baru untuk membuang label a, b, c, d
+
+  String _hapusLabel(String text) {
+    return text
+        .replaceAll('أ .', '')
+        .replaceAll('ب .', '')
+        .replaceAll('ج .', '')
+        .replaceAll('د .', '')
+        .replaceAll('أ.', '') // Hapus Alif + Titik
+        .replaceAll('ب.', '') // Hapus Ba + Titik
+        .replaceAll('ج.', '') // Hapus Jim + Titik
+        .replaceAll('د.', '') // Hapus Dal + Titik
+        .trim(); // Hapus spasi berlebih di awal/akhir
   }
 
   void _tentukanLayout() {
@@ -198,8 +211,11 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     // Petakan opsi beserta status kebenarannya
     for (int i = 0; i < rawOpsi.length; i++) {
       tempOpsi.add({
-        'teks': rawOpsi[i].toString(),
-        'isCorrect': i == kunciIndex, // Tandai jika ini adalah jawaban benar
+        // --- UBAH BAGIAN INI ---
+        'teks': _hapusLabel(
+            rawOpsi[i].toString()), // Bersihkan label sebelum masuk list
+        // -----------------------
+        'isCorrect': i == kunciIndex,
       });
     }
 
@@ -233,7 +249,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     } else {
       List<dynamic> rawOpsi = soal['opsi'] ?? [];
       _pilihanKataDrag = rawOpsi
-          .map((e) => e.toString())
+          .map((e) => _hapusLabel(e.toString())) // --- TAMBAHKAN INI ---
           .where((kata) => kata.trim().isNotEmpty && kata != "-")
           .toList();
       _pilihanKataDrag.shuffle();
@@ -252,18 +268,23 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     final List<dynamic> opsiAsli = soal['opsi'];
     bool isCorrect = false;
 
+    // Kita bersihkan dulu kunci jawaban dari database biar adil
+    String kunci1 = _bersihkanString(_hapusLabel(opsiAsli[0].toString()));
+    String kunci2 = (opsiAsli.length > 1)
+        ? _bersihkanString(_hapusLabel(opsiAsli[1].toString()))
+        : "";
+
     if (_tipeLayout == 2) {
       if (_droppedBox1 == null || _droppedBox2 == null) return;
-      if (_bersihkanString(_droppedBox1!) ==
-              _bersihkanString(opsiAsli[0].toString()) &&
-          _bersihkanString(_droppedBox2!) ==
-              _bersihkanString(opsiAsli[1].toString())) {
+
+      // Bandingkan Jawaban User (yg sudah bersih) dengan Kunci (yg baru dibersihkan)
+      if (_bersihkanString(_droppedBox1!) == kunci1 &&
+          _bersihkanString(_droppedBox2!) == kunci2) {
         isCorrect = true;
       }
     } else if (_tipeLayout == 1) {
       if (_droppedBox1 == null) return;
-      if (_bersihkanString(_droppedBox1!) ==
-          _bersihkanString(opsiAsli[0].toString())) {
+      if (_bersihkanString(_droppedBox1!) == kunci1) {
         isCorrect = true;
       }
     } else if (_tipeLayout == 3) {
@@ -557,7 +578,8 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
           child: ElevatedButton(
               onPressed: _cekJawabanDragDrop,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text("LANJUT", style: TextStyle(color: Colors.white))),
+              child:
+                  const Text("LANJUT", style: TextStyle(color: Colors.white))),
         )
       ],
     );

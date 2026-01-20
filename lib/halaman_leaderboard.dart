@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+// 1. SEMBUNYIKAN User DARI SUPABASE BIAR GAK BENTROK
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+// 2. IMPORT FIREBASE AUTH
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HalamanLeaderboardPage extends StatefulWidget {
   const HalamanLeaderboardPage({super.key});
@@ -11,7 +14,7 @@ class HalamanLeaderboardPage extends StatefulWidget {
 class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
   List<Map<String, dynamic>> _topThree = [];
   List<Map<String, dynamic>> _otherRanks = [];
-  Map<String, dynamic>? _myRankData; // Data ranking saya sendiri
+  Map<String, dynamic>? _myRankData;
   bool _isLoading = true;
 
   @override
@@ -20,71 +23,76 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
     _fetchLeaderboard();
   }
 
+  // --- FUNGSI PINTAR UNTUK AVATAR ---
+  ImageProvider _getAvatarImage(String? url) {
+    if (url != null && url.isNotEmpty) {
+      if (url.startsWith('http')) {
+        return NetworkImage(url); // Foto Internet
+      } else {
+        return AssetImage(url); // Foto Asset
+      }
+    }
+    return const AssetImage('assets/images/profil.png');
+  }
+
   Future<void> _fetchLeaderboard() async {
     try {
       final supabase = Supabase.instance.client;
-      final myUserId = supabase.auth.currentUser?.id;
 
-      // 1. AMBIL DATA DARI "VIEW" YANG KITA BUAT TADI
-      // View ini sudah otomatis mengurutkan skor tertinggi
-      final response = await supabase
-          .from('view_leaderboard')
-          .select()
-          .limit(50); // Ambil Top 50 saja
+      // 3. AMBIL ID DARI FIREBASE (Karena login pake Firebase)
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final myUserId = firebaseUser?.uid;
+
+      // Ambil data dari View Supabase
+      final response =
+          await supabase.from('view_leaderboard').select().limit(50);
 
       List<Map<String, dynamic>> rawData =
           List<Map<String, dynamic>>.from(response);
       List<Map<String, dynamic>> processedList = [];
 
-      // 2. Olah Data (Kasih Nomor Ranking & Warna)
+      // Olah Data
       for (int i = 0; i < rawData.length; i++) {
         var item = rawData[i];
         int rank = i + 1;
 
-        // Tentukan warna podium
         Color rankColor = Colors.grey;
         if (rank == 1)
-          rankColor = const Color(0xFFFFD700); // Emas
+          rankColor = const Color(0xFFFFD700);
         else if (rank == 2)
-          rankColor = const Color(0xFFC0C0C0); // Perak
-        else if (rank == 3) rankColor = const Color(0xFFCD7F32); // Perunggu
+          rankColor = const Color(0xFFC0C0C0);
+        else if (rank == 3) rankColor = const Color(0xFFCD7F32);
 
         Map<String, dynamic> userMap = {
           'user_id': item['user_id'],
           'nama': item['nama'] ?? 'Tanpa Nama',
           'skor': item['skor_tertinggi'] ?? 0,
+          'avatar_url': item['avatar_url'],
           'rank': rank,
           'color': rankColor
         };
 
         processedList.add(userMap);
 
-        // Cek apakah ini saya?
+        // Cek ID Firebase == ID di Supabase (buat highlight "Saya")
         if (item['user_id'] == myUserId) {
           _myRankData = userMap;
         }
       }
 
-      // 3. Pisahkan Top 3 dan Sisanya
+      // Pisahkan Top 3
       if (processedList.length >= 3) {
-        // Urutan Array Podium Visual: Kiri(Juara2), Tengah(Juara1), Kanan(Juara3)
-        // Data sorted: [0]=Juara1, [1]=Juara2, [2]=Juara3
-        _topThree = [
-          processedList[1], // Posisi Kiri (Juara 2)
-          processedList[0], // Posisi Tengah (Juara 1)
-          processedList[2] // Posisi Kanan (Juara 3)
-        ];
+        _topThree = [processedList[1], processedList[0], processedList[2]];
         _otherRanks = processedList.sublist(3);
       } else {
-        // Fallback jika data kurang dari 3
         _topThree = processedList;
         _otherRanks = [];
       }
 
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       print("Error leaderboard: $e");
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -109,7 +117,7 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
       ),
       body: Column(
         children: [
-          // 1. BAGIAN PODIUM (TOP 3)
+          // BAGIAN PODIUM (TOP 3)
           if (_topThree.isNotEmpty)
             Container(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
@@ -128,7 +136,6 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: _topThree.map((item) {
-                  // Ukuran avatar: Juara 1 lebih besar
                   double size = item['rank'] == 1 ? 120 : 90;
                   return _buildPodiumItem(item, size);
                 }).toList(),
@@ -142,7 +149,7 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
 
           const SizedBox(height: 20),
 
-          // 2. DAFTAR RANKING (4 KE BAWAH)
+          // LIST RANKING SISANYA
           Expanded(
             child: _otherRanks.isEmpty && _topThree.isNotEmpty
                 ? const Center(child: Text("Belum ada ranking lainnya."))
@@ -151,6 +158,8 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                     itemCount: _otherRanks.length,
                     itemBuilder: (context, index) {
                       final item = _otherRanks[index];
+                      bool hasAvatar = item['avatar_url'] != null;
+
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(16),
@@ -159,7 +168,6 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                             borderRadius: BorderRadius.circular(16)),
                         child: Row(
                           children: [
-                            // Nomor Rank
                             SizedBox(
                               width: 30,
                               child: Text("${item['rank']}",
@@ -169,17 +177,20 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                                       color: Colors.grey)),
                             ),
                             const SizedBox(width: 10),
-                            // Avatar Kecil (Initial Nama)
                             CircleAvatar(
                               radius: 20,
                               backgroundColor: Colors.blue.shade50,
-                              child: Text(item['nama'][0].toUpperCase(),
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue.shade800)),
+                              backgroundImage: hasAvatar
+                                  ? _getAvatarImage(item['avatar_url'])
+                                  : null,
+                              child: !hasAvatar
+                                  ? Text(item['nama'][0].toUpperCase(),
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade800))
+                                  : null,
                             ),
                             const SizedBox(width: 12),
-                            // Nama & Skor
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,7 +216,7 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
         ],
       ),
 
-      // 3. BAR "POSISI SAYA" (Fixed di Bawah)
+      // BAR POSISI SAYA (BOTTOM)
       bottomNavigationBar: _myRankData != null
           ? Container(
               height: 80,
@@ -228,9 +239,15 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                   CircleAvatar(
                     radius: 24,
                     backgroundColor: Colors.blue,
-                    child: Text(_myRankData!['nama'][0].toUpperCase(),
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                    backgroundImage: _myRankData!['avatar_url'] != null
+                        ? _getAvatarImage(_myRankData!['avatar_url'])
+                        : null,
+                    child: _myRankData!['avatar_url'] == null
+                        ? Text(_myRankData!['nama'][0].toUpperCase(),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold))
+                        : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -252,14 +269,13 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                 ],
               ),
             )
-          : const SizedBox
-              .shrink(), // Jika user belum pernah tes, sembunyikan bar bawah
+          : const SizedBox.shrink(),
     );
   }
 
-  // WIDGET HELPER: MEMBUAT PODIUM
   Widget _buildPodiumItem(Map<String, dynamic> data, double size) {
     bool isJuara1 = data['rank'] == 1;
+    bool hasAvatar = data['avatar_url'] != null;
 
     return Column(
       children: [
@@ -268,8 +284,6 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
               padding: EdgeInsets.only(bottom: 8),
               child: Icon(Icons.workspace_premium,
                   color: Color(0xFFFFD700), size: 32)),
-
-        // Avatar Lingkaran
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -284,24 +298,23 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
           child: CircleAvatar(
             radius: isJuara1 ? 40 : 30,
             backgroundColor: Colors.grey[100],
-            child: Text(data['nama'][0].toUpperCase(),
-                style: TextStyle(
-                    fontSize: isJuara1 ? 24 : 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
+            backgroundImage:
+                hasAvatar ? _getAvatarImage(data['avatar_url']) : null,
+            child: !hasAvatar
+                ? Text(data['nama'][0].toUpperCase(),
+                    style: TextStyle(
+                        fontSize: isJuara1 ? 24 : 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87))
+                : null,
           ),
         ),
         const SizedBox(height: 8),
-
-        // Nama
         Text(
-          data['nama'].split(" ")[0], // Ambil nama depan saja
+          data['nama'].split(" ")[0],
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
-
         const SizedBox(height: 4),
-
-        // Badge Rank
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
@@ -312,7 +325,6 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
                   fontWeight: FontWeight.bold,
                   fontSize: 12)),
         ),
-
         const SizedBox(height: 4),
         Text("${data['skor']}",
             style: const TextStyle(

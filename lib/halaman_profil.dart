@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart'; // Wajib buat upload foto
-import 'package:image_picker/image_picker.dart'; // Wajib buat buka galeri
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'halaman_login.dart';
 
@@ -18,9 +16,22 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
   final _namaController = TextEditingController();
   final _emailController = TextEditingController();
 
-  String? _avatarUrl; // Nampung URL foto dari Firebase
+  String? _avatarPath; // Menyimpan path asset atau URL
   bool _isLoading = false;
-  bool notifikasiAktif = true;
+
+  // --- DAFTAR 10 AVATAR (ASSET LOKAL) ---
+  final List<String> _listAvatar = [
+    'assets/ava/ava1.png',
+    'assets/ava/ava2.png',
+    'assets/ava/ava3.png',
+    'assets/ava/ava4.png',
+    'assets/ava/ava5.png',
+    'assets/ava/ava6.png',
+    'assets/ava/ava7.png',
+    'assets/ava/ava8.png',
+    'assets/ava/ava9.png',
+    'assets/ava/ava10.png',
+  ];
 
   @override
   void initState() {
@@ -28,7 +39,7 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
     _ambilDataProfil();
   }
 
-  // --- 1. AMBIL DATA DARI FIREBASE ---
+  // --- 1. AMBIL DATA PROFIL (SUMBER UTAMA: FIREBASE) ---
   Future<void> _ambilDataProfil() async {
     setState(() => _isLoading = true);
     try {
@@ -37,7 +48,7 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
       if (user != null) {
         _emailController.text = user.email ?? "";
 
-        // Ambil data detail dari Firestore (karena Auth cuma simpan data dasar)
+        // Ambil data detail dari Firestore
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -47,13 +58,13 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
           Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
           setState(() {
             _namaController.text = data['nama'] ?? user.displayName ?? "User";
-            _avatarUrl = data['avatar_url']; // Ambil link foto kalau ada
+            _avatarPath = data['avatar_url']; // Bisa URL http atau path asset
           });
         } else {
-          // Kalau user login google tapi belum ada di firestore
+          // Jika user baru login pertama kali
           setState(() {
             _namaController.text = user.displayName ?? "User";
-            _avatarUrl = user.photoURL;
+            _avatarPath = 'assets/ava/ava1.png'; // Default
           });
         }
       }
@@ -64,118 +75,164 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
     }
   }
 
-  // --- 2. GANTI FOTO PROFIL (UPLOAD KE FIREBASE STORAGE) ---
-  Future<void> _gantiFoto() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-
-    if (image == null) return;
-
+  // --- 2. LOGIKA GANTI AVATAR (UPDATE FIREBASE & SUPABASE) ---
+  Future<void> _simpanAvatarKeFirebase(String assetPath) async {
     setState(() => _isLoading = true);
-
     try {
       User? user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      File file = File(image.path);
-
-      // A. Siapkan tempat di Storage: folder 'profile_images', nama file = uid user
-      Reference ref = FirebaseStorage.instance
-          .ref()
-          .child('profile_images/${user.uid}.jpg');
-
-      // B. Upload File
-      await ref.putFile(file);
-
-      // C. Ambil Link Download (URL)
-      String imageUrl = await ref.getDownloadURL();
-
-      // D. Simpan URL ke Firestore (biar permanen)
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-          {'avatar_url': imageUrl},
-          SetOptions(merge: true)); // merge: true biar data lain gak kehapus
-
-      // E. Update Tampilan
-      setState(() {
-        _avatarUrl = imageUrl;
-      });
-
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Foto berhasil diperbarui!")));
-    } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("Gagal upload: $e"), backgroundColor: Colors.red));
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // --- 3. SIMPAN PERUBAHAN NAMA ---
-  Future<void> _simpanNama() async {
-    if (_namaController.text.isEmpty) return;
-
-    setState(() => _isLoading = true);
-    try {
-      User? user = FirebaseAuth.instance.currentUser;
-
-      // Update ke Firestore
+      // A. UPDATE KE FIREBASE (Untuk Halaman Ini & Home)
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(user!.uid)
-          .set({'nama': _namaController.text.trim()}, SetOptions(merge: true));
+          .doc(user.uid)
+          .set({'avatar_url': assetPath}, SetOptions(merge: true));
 
-      // Update ke Auth Profile (Opsional, biar sinkron sama Google Auth)
-      await user.updateDisplayName(_namaController.text.trim());
+      // B. UPDATE KE SUPABASE (Untuk Sinkronisasi Leaderboard)
+      // Kita mencari user di Supabase yang ID-nya SAMA DENGAN UID Firebase
+      try {
+        await Supabase.instance.client
+            .from(
+                'profil_siswa') // GANTI dengan nama tabelmu: 'users' atau 'profil_siswa'
+            .update({
+          'avatar_url': assetPath,
+          // 'nama': _namaController.text // Opsional: kalau mau update nama juga
+        }).eq('id', user.uid); // Asumsi kolom ID di Supabase bernama 'id'
+      } catch (e) {
+        print("Gagal sync ke Supabase (Mungkin user belum tes): $e");
+        // Kita biarkan error ini silent, karena prioritas profil Firebase sukses
+      }
 
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Nama berhasil disimpan!"),
-            backgroundColor: Colors.green));
+      // C. UPDATE TAMPILAN
+      setState(() {
+        _avatarPath = assetPath;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Avatar berhasil diperbarui!")));
+      }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Gagal: $e")));
+      print("Gagal ganti avatar: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      }
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // --- 4. GANTI PASSWORD (VIA EMAIL) ---
-  Future<void> _resetPassword() async {
-    if (_emailController.text.isEmpty) return;
+  // --- 3. LOGIKA TAMPILAN GAMBAR (PINTAR) ---
+  ImageProvider _getAvatarImage() {
+    if (_avatarPath != null && _avatarPath!.isNotEmpty) {
+      // Jika link internet (dari Google login lama)
+      if (_avatarPath!.startsWith('http')) {
+        return NetworkImage(_avatarPath!);
+      }
+      // Jika path asset lokal (Avatar pilihan)
+      else {
+        return AssetImage(_avatarPath!);
+      }
+    }
+    // Default
+    return const AssetImage('assets/ava/ava1.png');
+  }
 
-    try {
-      await FirebaseAuth.instance
-          .sendPasswordResetEmail(email: _emailController.text);
-
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("Cek Email"),
-            content: Text(
-                "Link reset password telah dikirim ke ${_emailController.text}. Silakan cek inbox/spam."),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx), child: const Text("Oke"))
+  // --- 4. TAMPILKAN MODAL PILIHAN ---
+  void _tampilkanPilihanAvatar() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          height: 380,
+          child: Column(
+            children: [
+              const Text("Pilih Karakter Kamu",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 20),
+              Expanded(
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5, // 5 gambar per baris
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: _listAvatar.length,
+                  itemBuilder: (context, index) {
+                    bool isSelected = _avatarPath == _listAvatar[index];
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context); // Tutup dulu
+                        _simpanAvatarKeFirebase(
+                            _listAvatar[index]); // Lalu simpan
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: isSelected
+                                    ? Colors.blue
+                                    : Colors.transparent,
+                                width: 3)),
+                        child: CircleAvatar(
+                          backgroundImage: AssetImage(_listAvatar[index]),
+                          backgroundColor: Colors.grey[100],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         );
+      },
+    );
+  }
+
+  // --- 5. SIMPAN NAMA (SYNC JUGA KE SUPABASE BIAR RAPI) ---
+  Future<void> _simpanNama() async {
+    if (_namaController.text.isEmpty) return;
+    setState(() => _isLoading = true);
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      String namaBaru = _namaController.text.trim();
+
+      // 1. Firebase
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .set({'nama': namaBaru}, SetOptions(merge: true));
+
+      // 2. Supabase (Sync)
+      try {
+        await Supabase.instance.client
+            .from('profil_siswa')
+            .update({'nama': namaBaru}).eq('id', user.uid);
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Nama berhasil disimpan!"),
+            backgroundColor: Colors.green));
       }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Gagal: $e")));
+      // Handle error
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  // --- 5. LOGOUT ---
+  // --- 6. LOGOUT ---
   void _logout() async {
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
-
     if (mounted) {
       Navigator.pushAndRemoveUntil(
           context,
@@ -215,24 +272,22 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
                           child: CircleAvatar(
                             radius: 60,
                             backgroundColor: Colors.grey[300],
-                            backgroundImage: _avatarUrl != null
-                                ? NetworkImage(_avatarUrl!)
-                                : const AssetImage('assets/images/profil.png')
-                                    as ImageProvider,
+                            backgroundImage:
+                                _getAvatarImage(), // Panggil fungsi pintar
                           ),
                         ),
                         Positioned(
                           bottom: 0,
                           right: 0,
                           child: GestureDetector(
-                            onTap: _gantiFoto, // Fungsi Ganti Foto Firebase
+                            onTap: _tampilkanPilihanAvatar,
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: const BoxDecoration(
                                 color: Colors.blue,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.camera_alt,
+                              child: const Icon(Icons.edit,
                                   color: Colors.white, size: 20),
                             ),
                           ),
@@ -258,8 +313,7 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
                   // --- EMAIL (READ ONLY) ---
                   TextField(
                     controller: _emailController,
-                    readOnly:
-                        true, // Email di Firebase tidak bisa diganti sembarangan
+                    readOnly: true,
                     decoration: InputDecoration(
                         labelText: "Email",
                         prefixIcon: const Icon(Icons.email),
@@ -283,24 +337,6 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
                       child: const Text("SIMPAN NAMA",
                           style: TextStyle(
                               color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-
-                  // --- TOMBOL GANTI PASSWORD ---
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: OutlinedButton(
-                      onPressed: _resetPassword,
-                      style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.orange),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12))),
-                      child: const Text("GANTI PASSWORD (VIA EMAIL)",
-                          style: TextStyle(
-                              color: Colors.orange,
                               fontWeight: FontWeight.bold)),
                     ),
                   ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'halaman_materi.dart';
-import 'halaman_kuis.dart';
+import 'halaman_kuis.dart'; // Pastikan import ini ada jika langsung ke kuis, atau pengantar
 import 'halaman_pengantar.dart';
 
 class DaftarBabPage extends StatelessWidget {
@@ -22,6 +22,9 @@ class DaftarBabPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cek apakah ini menu Qira'ah
+    bool isQiraah = kategoriDatabase == "Qira'ah";
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -38,18 +41,64 @@ class DaftarBabPage extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
+      // --- TOMBOL SATU UNTUK SEMUA (KHUSUS QIRA'AH) ---
+      bottomNavigationBar: isQiraah
+          ? Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
+                  )
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // Arahkan ke latihan gabungan / umum
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => HalamanPengantarPage(
+                        title: "Latihan Qira'ah (Semua Pola)",
+                        kategoriFilter: "Qira'ah",
+                        // Gunakan filter khusus, misalnya "Semua" atau ambil pola 1 sebagai default
+                        // Nanti di query database harus disesuaikan agar mengambil semua soal Qira'ah
+                        polaFilter: "Semua",
+                        kodeKategori: kodeKategoriFile,
+                        kodePola: "all",
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.play_circle_fill, color: Colors.white),
+                label: const Text("KERJAKAN LATIHAN (SEMUA POLA)",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color, // Sesuaikan warna tema
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            )
+          : null, // Jika bukan Qira'ah, tidak ada tombol bawah
       body: ListView.builder(
         padding: const EdgeInsets.all(20),
         itemCount: dataBab.length,
         itemBuilder: (context, index) {
-          // --- LOGIKA PENGECEKAN TARAKIB POLA 3 ---
-          // Kita cek apakah judul bab mengandung "Pola 3" atau sesuaikan dengan data kamu
-          // Karena dataBab kamu dinamis, kita pakai index atau judul spesifik.
-          // Di main.dart kamu, Pola 3 adalah index ke-2 (index dimulai dari 0).
-          // ATAU lebih aman cek berdasarkan kategori dan judul bab.
+          // --- LOGIKA PENGECEKAN ---
+          bool isTarakibPola3 = (kategoriDatabase == "Tarakib" && index == 2);
 
-          bool isTarakibPola3 = (kategoriDatabase == "Tarakib" &&
-              index == 2); // Pola 3 ada di index 2 array Tarakib
+          // Sembunyikan tombol latihan di list JIKA:
+          // 1. Ini adalah Tarakib Pola 3 (karena format drag drop khusus/belum ada)
+          // 2. ATAU Ini adalah Qira'ah (karena tombolnya sudah dipindah ke bawah)
+          bool hideLatihanButton = isTarakibPola3 || isQiraah;
 
           return Container(
             margin: const EdgeInsets.only(bottom: 20),
@@ -83,16 +132,13 @@ class DaftarBabPage extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          // Kirim info apakah ini Tarakib Pola 3 ke halaman materi
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => DaftarMateriPage(
                                 title: "Materi Bab ${index + 1}",
                                 dataMateri: dataBab[index]['sub_bab'] ?? [],
-
-                                // Parameter Tambahan untuk Latihan per Materi
-                                showLatihanButton: isTarakibPola3,
+                                showLatihanButton: !hideLatihanButton,
                                 kategoriInfo: {
                                   'kategori': kategoriDatabase,
                                   'pola': "Pola ${index + 1}",
@@ -118,8 +164,8 @@ class DaftarBabPage extends StatelessWidget {
                       ),
                     ),
 
-                    // TOMBOL LATIHAN (Hanya Muncul Jika BUKAN Tarakib Pola 3)
-                    if (!isTarakibPola3) ...[
+                    // TOMBOL LATIHAN (Hanya Muncul Jika TIDAK disembunyikan)
+                    if (!hideLatihanButton) ...[
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
