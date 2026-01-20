@@ -1,42 +1,96 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart'; // Jangan lupa: flutter pub add intl
+import 'package:firebase_auth/firebase_auth.dart';
 
-class HalamanRaporPage extends StatelessWidget {
+class HalamanRaporPage extends StatefulWidget {
   const HalamanRaporPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // --- DATA DUMMY NILAI ---
-    final List<Map<String, dynamic>> riwayatNilai = [
-      {
-        'mapel': "Istima' (Menyimak)",
-        'bab': "Bab 1: Perkenalan",
-        'nilai': 100,
-        'tanggal': '25 Okt 2025',
-        'status': 'Sempurna'
-      },
-      {
-        'mapel': "Qira'ah (Membaca)",
-        'bab': "Bab 1: Teks Pendek",
-        'nilai': 80,
-        'tanggal': '24 Okt 2025',
-        'status': 'Lulus'
-      },
-      {
-        'mapel': "Tarakib (Struktur)",
-        'bab': "Bab 1: Kalimat Dasar",
-        'nilai': 40,
-        'tanggal': '23 Okt 2025',
-        'status': 'Remidi'
-      },
-      {
-        'mapel': "Simulasi TOSA",
-        'bab': "Try Out 1",
-        'nilai': 450, // Skor TOSA biasanya ratusan
-        'tanggal': '22 Okt 2025',
-        'status': 'Cukup'
-      },
-    ];
+  State<HalamanRaporPage> createState() => _HalamanRaporPageState();
+}
 
+class _HalamanRaporPageState extends State<HalamanRaporPage> {
+  List<Map<String, dynamic>> _riwayatData = [];
+  bool _isLoading = true;
+  double _rataRataSkor = 0;
+  String _predikatRataRata = "-";
+
+  @override
+  void initState() {
+    super.initState();
+    _ambilDataRiwayat();
+  }
+
+  Future<void> _ambilDataRiwayat() async {
+    try {
+      // 1. Ambil User ID dari Firebase Auth
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+
+      if (userId == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 2. Definisi Client Supabase (INI YANG TADI KURANG)
+      final supabase = Supabase.instance.client;
+
+      // 3. Ambil Data dengan Filter User ID Firebase
+      final response = await supabase
+          .from('riwayat_skor')
+          .select()
+          .eq('user_id',
+              userId) // Cocokkan UID Firebase dengan kolom user_id (Text) di Supabase
+          .order('created_at', ascending: false);
+
+      List<Map<String, dynamic>> data =
+          List<Map<String, dynamic>>.from(response);
+
+      // 4. Hitung Statistik Header
+      if (data.isNotEmpty) {
+        double total = 0;
+        for (var item in data) {
+          total += (item['skor_akhir'] as int);
+        }
+        _rataRataSkor = total / data.length;
+
+        // Hitung predikat rata-rata
+        if (_rataRataSkor >= 500) {
+          _predikatRataRata = "A";
+        } else if (_rataRataSkor >= 400) {
+          _predikatRataRata = "B";
+        } else if (_rataRataSkor >= 300) {
+          _predikatRataRata = "C";
+        } else {
+          _predikatRataRata = "D";
+        }
+      } else {
+        // Reset jika data kosong
+        _rataRataSkor = 0;
+        _predikatRataRata = "-";
+      }
+
+      setState(() {
+        _riwayatData = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Error ambil rapor: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _formatTanggal(String isoDate) {
+    try {
+      DateTime dt = DateTime.parse(isoDate).toLocal();
+      return DateFormat('dd MMM yyyy, HH:mm').format(dt);
+    } catch (e) {
+      return isoDate;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
@@ -45,110 +99,119 @@ class HalamanRaporPage extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        automaticallyImplyLeading:
-            false, // Hilangkan tombol back karena ini menu utama
+        automaticallyImplyLeading: false,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. KARTU RINGKASAN (Header Biru)
-            Container(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF009688), Color(0xFF4DB6AC)], // Warna Tosca
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.teal.withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5))
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Statistik 1
-                  Column(
-                    children: const [
-                      Text("Rata-rata",
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)),
-                      SizedBox(height: 5),
-                      Text("85",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold)),
-                    ],
+                  // 1. KARTU RINGKASAN (Header Biru Dinamis)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF009688), Color(0xFF4DB6AC)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.teal.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5))
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        // Statistik 1
+                        Column(
+                          children: [
+                            const Text("Rata-rata",
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 5),
+                            Text(_rataRataSkor.toStringAsFixed(0),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        Container(height: 40, width: 1, color: Colors.white24),
+                        // Statistik 2
+                        Column(
+                          children: [
+                            const Text("Total Tes",
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 5),
+                            Text("${_riwayatData.length}",
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        Container(height: 40, width: 1, color: Colors.white24),
+                        // Statistik 3
+                        Column(
+                          children: [
+                            const Text("Predikat",
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 5),
+                            Text(_predikatRataRata,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  Container(height: 40, width: 1, color: Colors.white24),
-                  // Statistik 2
-                  Column(
-                    children: const [
-                      Text("Total Kuis",
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)),
-                      SizedBox(height: 5),
-                      Text("4",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  Container(height: 40, width: 1, color: Colors.white24),
-                  // Statistik 3
-                  Column(
-                    children: const [
-                      Text("Predikat",
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)),
-                      SizedBox(height: 5),
-                      Text("B",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold)),
-                    ],
-                  ),
+
+                  const SizedBox(height: 24),
+                  const Text("Riwayat Tes TOSA",
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+
+                  // 2. LIST RIWAYAT NILAI (Dari Supabase)
+                  if (_riwayatData.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Center(child: Text("Belum ada riwayat tes.")),
+                    )
+                  else
+                    ..._riwayatData.map((data) {
+                      return _buildNilaiCard(data);
+                    }).toList(),
                 ],
               ),
             ),
-
-            const SizedBox(height: 24),
-            const Text("Detail Nilai",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-
-            // 2. LIST RIWAYAT NILAI
-            ...riwayatNilai.map((data) {
-              return _buildNilaiCard(data);
-            }).toList(),
-          ],
-        ),
-      ),
     );
   }
 
   // WIDGET KARTU NILAI
   Widget _buildNilaiCard(Map<String, dynamic> data) {
-    // Tentukan warna berdasarkan nilai
+    int skor = data['skor_akhir'];
+
+    // Tentukan warna berdasarkan skor TOSA
     Color warnaBadge;
-    if (data['mapel'] == "Simulasi TOSA") {
-      warnaBadge = Colors.blue; // Khusus TOSA warnanya biru
-    } else if (data['nilai'] >= 80) {
-      warnaBadge = Colors.green;
-    } else if (data['nilai'] >= 60) {
-      warnaBadge = Colors.orange;
-    } else {
-      warnaBadge = Colors.red;
-    }
+    if (skor >= 500)
+      warnaBadge = Colors.green; // Mumtaz
+    else if (skor >= 400)
+      warnaBadge = Colors.blue; // Jayyid Jiddan
+    else if (skor >= 300)
+      warnaBadge = Colors.orange; // Jayyid
+    else
+      warnaBadge = Colors.red; // Rasib/Maqbul
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -165,17 +228,17 @@ class HalamanRaporPage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Lingkaran Nilai
+          // Lingkaran Skor
           Container(
-            width: 50,
-            height: 50,
+            width: 60,
+            height: 60,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: warnaBadge.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Text(
-              "${data['nilai']}",
+              "$skor",
               style: TextStyle(
                   color: warnaBadge, fontWeight: FontWeight.bold, fontSize: 18),
             ),
@@ -187,32 +250,35 @@ class HalamanRaporPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(data['mapel'],
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 14)),
+                const Text("Simulasi TOSA",
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text(data['bab'],
+                // Rincian Kecil
+                Text(
+                    "L: ${data['benar_istima']} | S: ${data['benar_tarakib']} | R: ${data['benar_qiraah']}",
                     style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                 const SizedBox(height: 4),
+
                 // Tanggal & Status
                 Row(
                   children: [
                     Icon(Icons.calendar_today,
-                        size: 10, color: Colors.grey[400]),
+                        size: 12, color: Colors.grey[400]),
                     const SizedBox(width: 4),
-                    Text(data['tanggal'],
+                    Text(_formatTanggal(data['created_at']),
                         style:
-                            TextStyle(color: Colors.grey[400], fontSize: 10)),
+                            TextStyle(color: Colors.grey[400], fontSize: 11)),
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: warnaBadge.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        data['status'],
+                        data['predikat'] ?? "-",
                         style: TextStyle(
                             color: warnaBadge,
                             fontSize: 10,
@@ -224,9 +290,6 @@ class HalamanRaporPage extends StatelessWidget {
               ],
             ),
           ),
-
-          // Icon Panah
-          Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[300]),
         ],
       ),
     );

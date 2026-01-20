@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // 1. Import Auth
-import 'package:cloud_firestore/cloud_firestore.dart'; // 2. Import Database
-import 'package:google_sign_in/google_sign_in.dart'; // 3. Import Google Sign In
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart'; // Wajib buat upload foto
+import 'package:image_picker/image_picker.dart'; // Wajib buat buka galeri
+import 'package:google_sign_in/google_sign_in.dart';
 import 'halaman_login.dart';
 
 class HalamanProfilPage extends StatefulWidget {
@@ -12,88 +15,173 @@ class HalamanProfilPage extends StatefulWidget {
 }
 
 class _HalamanProfilPageState extends State<HalamanProfilPage> {
-  bool notifikasiAktif = true;
+  final _namaController = TextEditingController();
+  final _emailController = TextEditingController();
 
-  // Variabel untuk menampung data user
-  String _namaLengkap = "Memuat...";
-  String _emailUser = "Memuat...";
+  String? _avatarUrl; // Nampung URL foto dari Firebase
+  bool _isLoading = false;
+  bool notifikasiAktif = true;
 
   @override
   void initState() {
     super.initState();
-    _ambilDataProfil(); // Ambil data saat halaman dibuka
+    _ambilDataProfil();
   }
 
-  // --- FUNGSI AMBIL DATA USER DARI FIREBASE ---
-  void _ambilDataProfil() async {
-    User? user = FirebaseAuth.instance.currentUser;
+  // --- 1. AMBIL DATA DARI FIREBASE ---
+  Future<void> _ambilDataProfil() async {
+    setState(() => _isLoading = true);
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
 
-    if (user != null) {
-      // 1. Set Email langsung dari Auth
-      setState(() {
-        _emailUser = user.email ?? "-";
-      });
+      if (user != null) {
+        _emailController.text = user.email ?? "";
 
-      try {
-        // 2. Ambil Nama dari Firestore (karena nama di Auth kadang kosong kalau daftar via Email biasa)
+        // Ambil data detail dari Firestore (karena Auth cuma simpan data dasar)
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
 
         if (userDoc.exists) {
+          Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
           setState(() {
-            _namaLengkap = userDoc.get('nama');
+            _namaController.text = data['nama'] ?? user.displayName ?? "User";
+            _avatarUrl = data['avatar_url']; // Ambil link foto kalau ada
           });
         } else {
-          // Fallback kalau data di database belum ada, ambil dari Display Name Auth
+          // Kalau user login google tapi belum ada di firestore
           setState(() {
-            _namaLengkap = user.displayName ?? "User TOSA";
+            _namaController.text = user.displayName ?? "User";
+            _avatarUrl = user.photoURL;
           });
         }
-      } catch (e) {
-        setState(() => _namaLengkap = "User");
       }
+    } catch (e) {
+      print("Error ambil profil: $e");
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  // --- FUNGSI LOGOUT (GOOGLE + FIREBASE) ---
-  void _tampilDialogLogout(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Konfirmasi"),
-        content: const Text("Apakah kamu yakin ingin keluar dari aplikasi?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), // Batal
-            child: const Text("Batal", style: TextStyle(color: Colors.grey)),
+  // --- 2. GANTI FOTO PROFIL (UPLOAD KE FIREBASE STORAGE) ---
+  Future<void> _gantiFoto() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      File file = File(image.path);
+
+      // A. Siapkan tempat di Storage: folder 'profile_images', nama file = uid user
+      Reference ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_images/${user.uid}.jpg');
+
+      // B. Upload File
+      await ref.putFile(file);
+
+      // C. Ambil Link Download (URL)
+      String imageUrl = await ref.getDownloadURL();
+
+      // D. Simpan URL ke Firestore (biar permanen)
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+          {'avatar_url': imageUrl},
+          SetOptions(merge: true)); // merge: true biar data lain gak kehapus
+
+      // E. Update Tampilan
+      setState(() {
+        _avatarUrl = imageUrl;
+      });
+
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Foto berhasil diperbarui!")));
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("Gagal upload: $e"), backgroundColor: Colors.red));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // --- 3. SIMPAN PERUBAHAN NAMA ---
+  Future<void> _simpanNama() async {
+    if (_namaController.text.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+
+      // Update ke Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .set({'nama': _namaController.text.trim()}, SetOptions(merge: true));
+
+      // Update ke Auth Profile (Opsional, biar sinkron sama Google Auth)
+      await user.updateDisplayName(_namaController.text.trim());
+
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Nama berhasil disimpan!"),
+            backgroundColor: Colors.green));
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Gagal: $e")));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // --- 4. GANTI PASSWORD (VIA EMAIL) ---
+  Future<void> _resetPassword() async {
+    if (_emailController.text.isEmpty) return;
+
+    try {
+      await FirebaseAuth.instance
+          .sendPasswordResetEmail(email: _emailController.text);
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Cek Email"),
+            content: Text(
+                "Link reset password telah dikirim ke ${_emailController.text}. Silakan cek inbox/spam."),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text("Oke"))
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context); // Tutup dialog dulu
+        );
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Gagal: $e")));
+    }
+  }
 
-              // 1. Logout dari Google (PENTING: Supaya pas login lagi dia nanya akun)
-              await GoogleSignIn().signOut();
+  // --- 5. LOGOUT ---
+  void _logout() async {
+    await GoogleSignIn().signOut();
+    await FirebaseAuth.instance.signOut();
 
-              // 2. Logout dari Firebase
-              await FirebaseAuth.instance.signOut();
-
-              // 3. Kembali ke Halaman Login & Hapus semua history
-              if (mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LoginPage()),
-                  (route) => false,
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text("Keluar", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+          (route) => false);
+    }
   }
 
   @override
@@ -101,243 +189,141 @@ class _HalamanProfilPageState extends State<HalamanProfilPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text("Profil Saya",
+        title: const Text("Edit Profil",
             style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-              onPressed: () {},
-              icon: const Icon(Icons.settings, color: Colors.black))
-        ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-
-            // 1. HEADER PROFIL (FOTO & NAMA DINAMIS)
-            Container(
-              color: Colors.white,
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 30),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Stack(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border:
-                              Border.all(color: Colors.blue.shade100, width: 4),
-                        ),
-                        child: const CircleAvatar(
-                          radius: 50,
-                          backgroundImage: AssetImage(
-                              'assets/images/profil.png'), // Pastikan gambar ada
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Colors.blue,
+                  // --- FOTO PROFIL ---
+                  Center(
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
+                            border: Border.all(color: Colors.blue, width: 3),
                           ),
-                          child: const Icon(Icons.edit,
-                              color: Colors.white, size: 16),
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.grey[300],
+                            backgroundImage: _avatarUrl != null
+                                ? NetworkImage(_avatarUrl!)
+                                : const AssetImage('assets/images/profil.png')
+                                    as ImageProvider,
+                          ),
                         ),
-                      )
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // --- NAMA USER (DINAMIS) ---
-                  Text(_namaLengkap,
-                      style: const TextStyle(
-                          fontSize: 22, fontWeight: FontWeight.bold)),
-
-                  const SizedBox(height: 4),
-
-                  // --- EMAIL USER (DINAMIS) ---
-                  Text(_emailUser, style: const TextStyle(color: Colors.grey)),
-
-                  const SizedBox(height: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _gantiFoto, // Fungsi Ganti Foto Firebase
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.camera_alt,
+                                  color: Colors.white, size: 20),
+                            ),
+                          ),
+                        )
+                      ],
                     ),
-                    child: const Text("Level 2 - Mubtadi",
-                        style: TextStyle(
-                            color: Colors.blue,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold)),
-                  )
-                ],
-              ),
-            ),
+                  ),
+                  const SizedBox(height: 30),
 
-            const SizedBox(height: 20),
+                  // --- FORM NAMA ---
+                  TextField(
+                    controller: _namaController,
+                    decoration: InputDecoration(
+                        labelText: "Nama Lengkap",
+                        prefixIcon: const Icon(Icons.person),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: Colors.white),
+                  ),
+                  const SizedBox(height: 20),
 
-            // 2. MENU PENGATURAN (AKUN)
-            const Padding(
-              padding: EdgeInsets.only(left: 20, bottom: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text("Akun",
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.grey)),
-              ),
-            ),
+                  // --- EMAIL (READ ONLY) ---
+                  TextField(
+                    controller: _emailController,
+                    readOnly:
+                        true, // Email di Firebase tidak bisa diganti sembarangan
+                    decoration: InputDecoration(
+                        labelText: "Email",
+                        prefixIcon: const Icon(Icons.email),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: Colors.grey[200]),
+                  ),
+                  const SizedBox(height: 30),
 
-            Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  _buildMenuTile(
-                      icon: Icons.person_outline,
-                      title: "Edit Profil",
-                      onTap: () {}),
-                  _buildDivider(),
-                  _buildMenuTile(
-                      icon: Icons.lock_outline,
-                      title: "Ganti Password",
-                      onTap: () {}),
-                  _buildDivider(),
-                  _buildMenuTile(
-                      icon: Icons.language,
-                      title: "Bahasa Aplikasi",
-                      trailingText: "Indonesia",
-                      onTap: () {}),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // 3. MENU PENGATURAN (LAINNYA)
-            const Padding(
-              padding: EdgeInsets.only(left: 20, bottom: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text("Lainnya",
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.grey)),
-              ),
-            ),
-
-            Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  // Switch Notifikasi
-                  SwitchListTile(
-                    value: notifikasiAktif,
-                    onChanged: (val) {
-                      setState(() {
-                        notifikasiAktif = val;
-                      });
-                    },
-                    secondary: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.notifications_none,
-                          color: Colors.orange),
+                  // --- TOMBOL SIMPAN NAMA ---
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _simpanNama,
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12))),
+                      child: const Text("SIMPAN NAMA",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
                     ),
-                    title: const Text("Notifikasi",
-                        style: TextStyle(fontWeight: FontWeight.w500)),
-                    activeColor: Colors.blue,
                   ),
-                  _buildDivider(),
-                  _buildMenuTile(
-                      icon: Icons.help_outline,
-                      title: "Pusat Bantuan",
-                      onTap: () {}),
-                  _buildDivider(),
-                  _buildMenuTile(
-                      icon: Icons.info_outline,
-                      title: "Tentang Aplikasi",
-                      onTap: () {}),
+                  const SizedBox(height: 15),
+
+                  // --- TOMBOL GANTI PASSWORD ---
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: _resetPassword,
+                      style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.orange),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12))),
+                      child: const Text("GANTI PASSWORD (VIA EMAIL)",
+                          style: TextStyle(
+                              color: Colors.orange,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // --- TOMBOL LOGOUT ---
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: _logout,
+                      style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.red),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12))),
+                      child: const Text("KELUAR / LOGOUT",
+                          style: TextStyle(
+                              color: Colors.red, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 30),
-
-            // 4. TOMBOL LOGOUT (PANGGIL FUNGSI LOGOUT YANG BARU)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    _tampilDialogLogout(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade50,
-                    foregroundColor: Colors.red,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text("Keluar Akun",
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
     );
-  }
-
-  // WIDGET HELPER: ITEM MENU
-  Widget _buildMenuTile(
-      {required IconData icon,
-      required String title,
-      VoidCallback? onTap,
-      String? trailingText}) {
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-            color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-        child: Icon(icon, color: Colors.blue),
-      ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      trailing: trailingText != null
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(trailingText,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward_ios,
-                    size: 14, color: Colors.grey),
-              ],
-            )
-          : const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-    );
-  }
-
-  // WIDGET HELPER: GARIS PEMISAH
-  Widget _buildDivider() {
-    return const Divider(height: 1, thickness: 0.5, indent: 70);
   }
 }

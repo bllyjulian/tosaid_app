@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'data_konversi_tosa.dart'; // <--- Tambahkan ini
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HalamanSimulasiPage extends StatefulWidget {
   const HalamanSimulasiPage({super.key});
@@ -178,7 +180,8 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
   void _jawabSoal(int indexOpsi, Map<String, dynamic> soalData) {
     int kunci = soalData['kunci'];
     bool benar = indexOpsi == kunci;
-    if (benar) _totalSkor += 10;
+
+    // HAPUS BARIS INI: if (benar) _totalSkor += 10;  <-- HAPUS AJA
 
     List<dynamic> opsi = [
       soalData['opsi_a'],
@@ -187,8 +190,10 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
       soalData['opsi_d']
     ];
 
+    // Simpan status benar/salah ke laporan
     _laporanHasil.add({
-      'section': _dataTes[_currentSectionIdx]['nama_section'],
+      'section': _dataTes[_currentSectionIdx][
+          'nama_section'], // Penting! Nama harus sesuai (Istima', Tarakib, Qira'ah)
       'pertanyaan': soalData['pertanyaan'],
       'jawaban_user': opsi[indexOpsi],
       'jawaban_benar': opsi[kunci],
@@ -259,15 +264,84 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
     );
   }
 
-  void _selesaiTes() {
+  String _hitungPredikat(int skor) {
+    if (skor >= 500) return "MUMTAZ";
+    if (skor >= 400) return "JAYYID JIDDAN";
+    if (skor >= 300) return "JAYYID";
+    if (skor >= 200) return "MAQBUL";
+    return "RASIB";
+  }
+
+  // UPDATE FUNGSI INI
+  Future<void> _selesaiTes() async {
     _timer?.cancel();
     _audioPlayer.stop();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-          builder: (context) =>
-              HasilSimulasiPage(skorAkhir: _totalSkor, laporan: _laporanHasil)),
-    );
+
+    // 1. Cek User Login (PAKAI FIREBASE)
+    final userFirebase = FirebaseAuth.instance.currentUser;
+
+    if (userFirebase == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Error: Anda belum login! Hasil tidak tersimpan.")),
+        );
+      }
+      return;
+    }
+
+    // 2. Hitung Nilai
+    int benarIstima = _laporanHasil
+        .where((e) => e['section'] == "Istima'" && e['status'] == true)
+        .length;
+    int benarQiraah = _laporanHasil
+        .where((e) => e['section'] == "Qira'ah" && e['status'] == true)
+        .length;
+    int benarTarakib = _laporanHasil
+        .where((e) => e['section'] == "Tarakib" && e['status'] == true)
+        .length;
+
+    int skorFinalTosa = DataKonversiTosa.hitungSkorAkhir(
+        benarIstima: benarIstima,
+        benarTarakib: benarTarakib,
+        benarQiraah: benarQiraah);
+
+    // 3. Simpan ke Database Supabase (Kirim UID Firebase)
+    try {
+      final supabase = Supabase.instance.client;
+
+      // Ambil nama dari Firebase (displayName) atau Email, atau Default
+      String namaUser =
+          userFirebase.displayName ?? userFirebase.email ?? "Siswa Firebase";
+
+      await supabase.from('riwayat_skor').insert({
+        'user_id': userFirebase.uid, // <--- ID STRING DARI FIREBASE
+        'nama_siswa': namaUser,
+        'skor_akhir': skorFinalTosa,
+        'predikat': _hitungPredikat(skorFinalTosa),
+        'benar_istima': benarIstima,
+        'benar_tarakib': benarTarakib,
+        'benar_qiraah': benarQiraah,
+      });
+
+      print("Berhasil simpan untuk user: ${userFirebase.uid}");
+    } catch (e) {
+      print("Gagal simpan riwayat: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Gagal simpan: $e")));
+      }
+    }
+
+    // 4. Pindah Halaman
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (context) => HasilSimulasiPage(
+                skorAkhir: skorFinalTosa, laporan: _laporanHasil)),
+      );
+    }
   }
 
   String get _formatWaktu {
@@ -497,16 +571,23 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
             // ============================================================
 
             // JIKA: Teks "-" DAN Ada Audio -> TAMPILKAN PLAYER BESAR (UI BIRU KONSISTEN)
+// ============================================================
+            // BAGIAN 2: ITEM (SOAL / AUDIO UTAMA)
+            // ============================================================
+
+            // JIKA: Teks "-" DAN Ada Audio -> TAMPILKAN PLAYER BESAR (UI BIRU KONSISTEN)
             if (hasItemAudio && textIsDash) ...[
               SizedBox(
                 height: 400, // Atur tinggi sesuai kebutuhan
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 1. Judul Besar
-                    const Text(
-                      "Simak Audio Pengantar",
-                      style: TextStyle(
+                    // 1. Judul Besar (Dinamis: Cek apakah Instruksi atau Soal)
+                    Text(
+                      isInstruksi
+                          ? "Simak Audio Pengantar"
+                          : "Simak Audio Soal", // <--- PERBAIKAN DI SINI
+                      style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
                           color: Colors.black87),
@@ -518,9 +599,13 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 30),
                       child: Text(
+                        // Jika ada teks pertanyaan, tampilkan.
+                        // Jika tidak (-), cek tipe: kalau instruksi tampilkan teks instruksi, kalau soal tampilkan teks soal.
                         item['pertanyaan'] != '-'
                             ? item['pertanyaan']
-                            : "Dengarkan materi ini baik-baik sebelum memulai menjawab soal latihan.",
+                            : (isInstruksi
+                                ? "Dengarkan materi ini baik-baik sebelum memulai menjawab soal latihan."
+                                : "Dengarkan audio soal dengan seksama, lalu pilih jawaban yang benar."), // <--- PERBAIKAN DI SINI
                         style: TextStyle(
                             fontSize: 14, color: Colors.grey[600], height: 1.5),
                         textAlign: TextAlign.center,
@@ -701,32 +786,257 @@ class _HalamanSimulasiPageState extends State<HalamanSimulasiPage> {
   }
 }
 
+// ... (Kode HalamanSimulasiPage di atas biarkan saja) ...
+
 class HasilSimulasiPage extends StatelessWidget {
   final int skorAkhir;
   final List<Map<String, dynamic>> laporan;
-  const HasilSimulasiPage(
-      {super.key, required this.skorAkhir, required this.laporan});
+
+  const HasilSimulasiPage({
+    super.key,
+    required this.skorAkhir,
+    required this.laporan,
+  });
+
+  // Helper untuk menghitung Predikat
+  String _getPredikat(int skor) {
+    if (skor >= 500) return "MUMTAZ (Istimewa)";
+    if (skor >= 400) return "JAYYID JIDDAN (Sangat Baik)";
+    if (skor >= 300) return "JAYYID (Baik)";
+    if (skor >= 200) return "MAQBUL (Cukup)";
+    return "RASIB (Kurang)";
+  }
+
+  Color _getWarnaPredikat(int skor) {
+    if (skor >= 500) return Colors.green;
+    if (skor >= 400) return Colors.blue;
+    if (skor >= 300) return Colors.orange;
+    return Colors.red;
+  }
 
   @override
   Widget build(BuildContext context) {
+    // 1. Hitung Ulang Rincian dari Laporan
+    int benarIstima = laporan
+        .where((e) => e['section'] == "Istima'" && e['status'] == true)
+        .length;
+    int benarTarakib = laporan
+        .where((e) => e['section'] == "Tarakib" && e['status'] == true)
+        .length;
+    int benarQiraah = laporan
+        .where((e) => e['section'] == "Qira'ah" && e['status'] == true)
+        .length;
+
+    // Ambil Nilai Konversi per Sesi (untuk ditampilkan)
+    int skIstima = DataKonversiTosa.istima[benarIstima] ?? 24;
+    int skTarakib = DataKonversiTosa.tarakib[benarTarakib] ?? 20;
+    int skQiraah = DataKonversiTosa.qiraah[benarQiraah] ?? 21;
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Hasil Simulasi")),
-      body: Center(
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: const Text("Hasil Tes TOSA"),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+      ),
+      body: SingleChildScrollView(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text("Skor Anda", style: TextStyle(fontSize: 20)),
-            Text("$skorAkhir",
-                style: const TextStyle(
-                    fontSize: 60,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue)),
             const SizedBox(height: 20),
-            ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Kembali"))
+
+            // --- 1. KARTU SKOR UTAMA (HEADER) ---
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue.shade800, Colors.blue.shade400],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(25),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        blurRadius: 15,
+                        offset: const Offset(0, 10))
+                  ]),
+              child: Column(
+                children: [
+                  const Text("SKOR AKHIR ANDA",
+                      style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                          letterSpacing: 1.2)),
+                  const SizedBox(height: 10),
+                  Text("$skorAkhir",
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 64,
+                          fontWeight: FontWeight.bold)),
+                  const Divider(color: Colors.white30, height: 30),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20)),
+                    child: Text(
+                      _getPredikat(skorAkhir),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
+                    ),
+                  )
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text("Rincian Per Sesi",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87)),
+              ),
+            ),
+            const SizedBox(height: 15),
+
+            // --- 2. RINCIAN PER SESI ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  _buildStatCard(context,
+                      title: "Istima' (Listening)",
+                      icon: Icons.headset,
+                      color: Colors.blue,
+                      benar: benarIstima,
+                      totalSoal: 25,
+                      skorKonversi: skIstima),
+                  _buildStatCard(context,
+                      title: "Tarakib (Structure)",
+                      icon: Icons.build,
+                      color: Colors.purple,
+                      benar: benarTarakib,
+                      totalSoal: 20,
+                      skorKonversi: skTarakib),
+                  _buildStatCard(context,
+                      title: "Qira'ah (Reading)",
+                      icon: Icons.menu_book,
+                      color: Colors.orange,
+                      benar: benarQiraah,
+                      totalSoal: 25,
+                      skorKonversi: skQiraah),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // --- 3. TOMBOL KEMBALI ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.blue.shade800,
+                      side: BorderSide(color: Colors.blue.shade800, width: 2),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15)),
+                      elevation: 0),
+                  child: const Text("KEMBALI KE BERANDA",
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(BuildContext context,
+      {required String title,
+      required IconData icon,
+      required Color color,
+      required int benar,
+      required int totalSoal,
+      required int skorKonversi}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.grey.shade200,
+                blurRadius: 5,
+                offset: const Offset(0, 2))
+          ]),
+      child: Row(
+        children: [
+          // Icon Box
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(width: 15),
+
+          // Info Text
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 4),
+                Text("Benar: $benar dari $totalSoal Soal",
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ],
+            ),
+          ),
+
+          // Nilai Konversi (Badge)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: color.withOpacity(0.3))),
+            child: Column(
+              children: [
+                const Text("Nilai",
+                    style:
+                        TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                Text("$skorKonversi",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: color)),
+              ],
+            ),
+          )
+        ],
       ),
     );
   }
