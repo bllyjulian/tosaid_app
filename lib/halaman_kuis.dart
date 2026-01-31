@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'halaman_baca_pdf.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HalamanKuisPage extends StatefulWidget {
   final String title;
@@ -25,20 +26,26 @@ class HalamanKuisPage extends StatefulWidget {
 
 class _HalamanKuisPageState extends State<HalamanKuisPage> {
   int _currentIndex = 0;
-  int _score = 0;
+
   late AudioPlayer _audioPlayer;
+  late AudioPlayer _sfxPlayer;
   bool _isPlaying = false;
 
   List<Map<String, dynamic>> _soalList = [];
   bool _isLoading = true;
 
-  // --- STATE DRAG & DROP ---
+  // --- STATE PENYIMPANAN JAWABAN USER ---
+  // PG: Map<IndexSoal, IndexOpsiDipilih>
+  final Map<int, int> _jawabanPGUser = {};
+
+  // DragDrop: Map<IndexSoal, Map<NamaBox, StringIsiBox>>
+  final Map<int, Map<String, String>> _jawabanDragUser = {};
+
+  // --- STATE LOKAL PER HALAMAN ---
+  // Variable ini akan di-reset/di-load setiap ganti soal
   String? _droppedBox1;
   String? _droppedBox2;
   List<String> _pilihanKataDrag = [];
-
-  // --- [BARU] STATE PILIHAN GANDA (PG) ---
-  // List ini akan menyimpan opsi yang sudah diacak beserta status benarnya
   List<Map<String, dynamic>> _opsiPG = [];
 
   int _tipeLayout = 2;
@@ -49,16 +56,16 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
   void initState() {
     super.initState();
     _audioPlayer = AudioPlayer();
+    _sfxPlayer = AudioPlayer();
+
     _audioPlayer.onPlayerComplete
         .listen((event) => setState(() => _isPlaying = false));
 
     _ambilSoal();
 
-    // Tampilkan instruksi jika ada
     if (widget.instruksi != null &&
         widget.instruksi!.isNotEmpty &&
         widget.instruksi != "langsung") {
-      // Tampilkan Dialog setelah halaman selesai dibangun
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tampilkanDialogInstruksi();
       });
@@ -93,6 +100,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
   @override
   void dispose() {
     _audioPlayer.dispose();
+    _sfxPlayer.dispose();
     super.dispose();
   }
 
@@ -104,7 +112,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         .replaceAll('آ', 'ا')
         .trim()
         .replaceAll(RegExp(r'\s+'), ' ');
-  } // Fungsi baru untuk membuang label a, b, c, d
+  }
 
   String _hapusLabel(String text) {
     return text
@@ -112,11 +120,11 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         .replaceAll('ب .', '')
         .replaceAll('ج .', '')
         .replaceAll('د .', '')
-        .replaceAll('أ.', '') // Hapus Alif + Titik
-        .replaceAll('ب.', '') // Hapus Ba + Titik
-        .replaceAll('ج.', '') // Hapus Jim + Titik
-        .replaceAll('د.', '') // Hapus Dal + Titik
-        .trim(); // Hapus spasi berlebih di awal/akhir
+        .replaceAll('أ.', '')
+        .replaceAll('ب.', '')
+        .replaceAll('ج.', '')
+        .replaceAll('د.', '')
+        .trim();
   }
 
   void _tentukanLayout() {
@@ -164,17 +172,26 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
 
   void _ambilSoal() async {
     try {
+      // 1. Mulai Query (JANGAN pakai .order dulu disini)
+      // Gunakan 'PostgrestFilterBuilder' agar bisa ditambah .eq nanti
       var query = Supabase.instance.client
           .from('bank_soal')
-          .select()
-          .eq('kategori', widget.kategoriFilter)
-          .eq('pola', widget.polaFilter);
+          .select(); // Cukup select() dulu
 
+      // 2. Tambahkan Filter Wajib
+      // Kita chain (sambung) filter ke variabel query
+      query = query.eq('kategori', widget.kategoriFilter);
+      query = query.eq('pola', widget.polaFilter);
+
+      // 3. Tambahkan Filter Opsional (Sub Bab)
       if (widget.subBabFilter != null) {
         query = query.eq('sub_bab', widget.subBabFilter!);
       }
 
-      final response = await query;
+      // 4. EKSEKUSI: Tambahkan .order() PALING AKHIR saat await
+      // Ini penting! .order mengubah tipe data, jadi harus di akhir.
+      final response = await query.order('id', ascending: true);
+
       List<Map<String, dynamic>> data =
           List<Map<String, dynamic>>.from(response);
 
@@ -184,17 +201,12 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
         _soalList = data;
         _isLoading = false;
 
-        // --- SIAPKAN OPSI PERTAMA KALI ---
         if (_soalList.isNotEmpty) {
-          if (_isTarakibPola3()) {
-            _setupDragDrop(_soalList[0]);
-          } else {
-            _siapkanOpsiPG(); // Acak opsi untuk soal pertama
-          }
+          _siapkanHalamanSoal();
         }
       });
     } catch (e) {
-      print("Error: $e");
+      print("Error ambil soal: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -202,38 +214,51 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
   bool _isTarakibPola3() =>
       widget.kategoriFilter == 'Tarakib' && widget.polaFilter == 'Pola 3';
 
-  // --- [BARU] FUNGSI ACAK OPSI PG ---
-  void _siapkanOpsiPG() {
+  // --- FUNGSI UTAMA UNTUK MENYIAPKAN SOAL (RESET/LOAD STATE) ---
+  void _siapkanHalamanSoal() {
+    _audioPlayer.stop();
+    setState(() => _isPlaying = false);
+
     if (_soalList.isEmpty) return;
 
-    final soal = _soalList[_currentIndex];
-    List<dynamic> rawOpsi = soal['opsi'] ?? [];
-    int kunciIndex = soal['kunci'] ?? 0;
+    var soal = _soalList[_currentIndex];
 
-    List<Map<String, dynamic>> tempOpsi = [];
-
-    // Petakan opsi beserta status kebenarannya
-    for (int i = 0; i < rawOpsi.length; i++) {
-      tempOpsi.add({
-        // --- UBAH BAGIAN INI ---
-        'teks': _hapusLabel(
-            rawOpsi[i].toString()), // Bersihkan label sebelum masuk list
-        // -----------------------
-        'isCorrect': i == kunciIndex,
-      });
+    if (_isTarakibPola3()) {
+      _siapkanDragDrop(soal);
+    } else {
+      _siapkanPG(soal);
     }
-
-    // ACAK URUTANNYA
-    tempOpsi.shuffle();
-
-    // Simpan ke state
-    _opsiPG = tempOpsi;
   }
 
-  void _setupDragDrop(Map<String, dynamic> soal) {
-    _droppedBox1 = null;
-    _droppedBox2 = null;
+  // --- SETUP UNTUK PILIHAN GANDA ---
+  void _siapkanPG(Map<String, dynamic> soal) {
+    List<dynamic> rawOpsi = soal['opsi'] ?? [];
+    List<Map<String, dynamic>> tempOpsi = [];
 
+    // Kita simpan index asli (0,1,2,3) agar nanti pencocokan kunci jawaban akurat
+    // meskipun tampilannya nanti diatur ulang (tapi requestmu tidak diacak, jadi aman)
+    for (int i = 0; i < rawOpsi.length; i++) {
+      tempOpsi.add({
+        'teks': rawOpsi[i].toString(),
+        'indexAsli': i,
+      });
+    }
+    // _opsiPG = tempOpsi; // Kalau mau diacak, pake .shuffle() disini.
+    // Sesuai request "jangan diacak", kita biarkan urut.
+    setState(() {
+      _opsiPG = tempOpsi;
+    });
+  }
+
+  // --- SETUP UNTUK DRAG & DROP ---
+  void _siapkanDragDrop(Map<String, dynamic> soal) {
+    // 1. Ambil jawaban yang sudah tersimpan (kalau ada)
+    Map<String, String>? savedAns = _jawabanDragUser[_currentIndex];
+
+    _droppedBox1 = savedAns?['box1'];
+    _droppedBox2 = savedAns?['box2'];
+
+    // 2. Siapkan kata-kata yang bisa didrag (Pool Kata)
     if (_tipeLayout == 3) {
       if (_labelBox1 == "Jenis Tawabi'") {
         _pilihanKataDrag = [
@@ -253,69 +278,48 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     } else {
       List<dynamic> rawOpsi = soal['opsi'] ?? [];
       _pilihanKataDrag = rawOpsi
-          .map((e) => _hapusLabel(e.toString())) // --- TAMBAHKAN INI ---
+          .map((e) => _hapusLabel(e.toString()))
           .where((kata) => kata.trim().isNotEmpty && kata != "-")
           .toList();
-      _pilihanKataDrag.shuffle();
+      _pilihanKataDrag.shuffle(); // Drag drop tetap diacak di pool-nya
     }
+
+    // 3. Hapus kata yang sudah dipakai di kotak (agar tidak duplikat di bawah)
+    if (_droppedBox1 != null) _pilihanKataDrag.remove(_droppedBox1);
+    if (_droppedBox2 != null) _pilihanKataDrag.remove(_droppedBox2);
+
+    setState(() {});
   }
 
-  // --- [UPDATE] Jawab PG menggunakan boolean ---
-  void _jawabSoalPG(bool isCorrect) {
-    _audioPlayer.stop();
-    if (isCorrect) _score += 10;
-    _lanjutSoal(); // Langsung lanjut tanpa pop-up
+  // --- FUNGSI INTERAKSI ---
+
+  // Saat Pilihan Ganda diklik
+  void _pilihJawabanPG(int indexAsli) {
+    setState(() {
+      _jawabanPGUser[_currentIndex] = indexAsli;
+    });
   }
 
-  void _cekJawabanDragDrop() {
-    final soal = _soalList[_currentIndex];
-    final List<dynamic> opsiAsli = soal['opsi'];
-    bool isCorrect = false;
-
-    // Kita bersihkan dulu kunci jawaban dari database biar adil
-    String kunci1 = _bersihkanString(_hapusLabel(opsiAsli[0].toString()));
-    String kunci2 = (opsiAsli.length > 1)
-        ? _bersihkanString(_hapusLabel(opsiAsli[1].toString()))
-        : "";
-
-    if (_tipeLayout == 2) {
-      if (_droppedBox1 == null || _droppedBox2 == null) return;
-
-      // Bandingkan Jawaban User (yg sudah bersih) dengan Kunci (yg baru dibersihkan)
-      if (_bersihkanString(_droppedBox1!) == kunci1 &&
-          _bersihkanString(_droppedBox2!) == kunci2) {
-        isCorrect = true;
+  // Saat Drag Drop dilepas
+  void _terimaDrop(String boxKey, String val) {
+    setState(() {
+      if (boxKey == 'box1') {
+        // Kembalikan item lama ke pool jika ada
+        if (_droppedBox1 != null) _pilihanKataDrag.add(_droppedBox1!);
+        _droppedBox1 = val;
+      } else {
+        if (_droppedBox2 != null) _pilihanKataDrag.add(_droppedBox2!);
+        _droppedBox2 = val;
       }
-    } else if (_tipeLayout == 1) {
-      if (_droppedBox1 == null) return;
-      if (_bersihkanString(_droppedBox1!) == kunci1) {
-        isCorrect = true;
-      }
-    } else if (_tipeLayout == 3) {
-      if (_droppedBox1 == null) return;
-      String userAns = _bersihkanString(_droppedBox1!);
-      String dbKey = _bersihkanString(opsiAsli[0].toString());
-      if (userAns == dbKey) isCorrect = true;
-    }
+      // Hapus item baru dari pool
+      _pilihanKataDrag.remove(val);
 
-    if (isCorrect) _score += 10;
-    _lanjutSoal();
-  }
-
-  void _lanjutSoal() {
-    if (_currentIndex < _soalList.length - 1) {
-      setState(() {
-        _currentIndex++;
-        // --- SETUP SOAL BERIKUTNYA ---
-        if (_isTarakibPola3()) {
-          _setupDragDrop(_soalList[_currentIndex]);
-        } else {
-          _siapkanOpsiPG(); // Acak opsi lagi untuk soal baru
-        }
-      });
-    } else {
-      _tampilkanSkor();
-    }
+      // Simpan ke state global
+      _jawabanDragUser[_currentIndex] = {
+        'box1': _droppedBox1 ?? "",
+        'box2': _droppedBox2 ?? "",
+      };
+    });
   }
 
   void _playAudio(String? url) async {
@@ -330,168 +334,368 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     } catch (e) {}
   }
 
-// ===============================================================
-  // 1. FUNGSI LOGIKA PENAMAAN FILE PDF (SESUAI REQUEST KAMU)
-  // ===============================================================
-  String _generateNamaFilePdf() {
-    String kat = widget.kategoriFilter; // Istima', Tarakib, Qira'ah
-    String pol = widget.polaFilter; // Pola 1, Pola 2, Pola 3
-    String? sub = widget.subBabFilter; // Mubtada Khabar, dll
+  // --- LOGIKA NAVIGASI ---
 
-    // A. QIRA'AH (Semua pola jadi satu file: 2_kj.pdf)
-    if (kat == "Qira'ah") {
-      return "2_kj.pdf";
+  void _keSoalSebelumnya() {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+        _siapkanHalamanSoal();
+      });
     }
-
-    // B. ISTIMA' (1_kj_pola1.pdf, 1_kj_pola2.pdf, dst)
-    if (kat == "Istima'") {
-      // Ubah "Pola 1" jadi "pola1" (kecil semua, tanpa spasi)
-      String suffix = pol.toLowerCase().replaceAll(" ", "");
-      return "1_kj_$suffix.pdf";
-    }
-
-    // C. TARAKIB
-    if (kat == "Tarakib") {
-      // Jika Pola 1 atau Pola 2 -> 3_kj_pola1.pdf / 3_kj_pola2.pdf
-      if (pol != "Pola 3") {
-        String suffix = pol.toLowerCase().replaceAll(" ", "");
-        return "3_kj_$suffix.pdf";
-      }
-      // Jika Pola 3 (Per Materi) -> 3_kj_pola3_1.pdf, dst
-      else {
-        // Daftar ini HARUS SAMA URUTANNYA dengan yang ada di main.dart / database
-        List<String> urutanMateri = [
-          "Mubtada Khabar", // _1
-          "Kana wa Akhwatuha", // _2
-          "Inna wa Akhwatuha", // _3
-          "Fi'il Fa'il", // _4
-          "Maf'ul bih", // _5
-          "Na'at wa Man'ut", // _6
-          "Tawabi'", // _7
-          "Maf'ulat", // _8
-          "A'dad" // _9
-        ];
-
-        int index = urutanMateri.indexOf(sub ?? "") + 1; // +1 biar mulai dari 1
-        if (index == 0) index = 1; // Default kalau gak ketemu
-
-        return "3_kj_pola3_$index.pdf";
-      }
-    }
-
-    return ""; // Default kosong
   }
 
-// ===============================================================
-  // 2. MODIFIKASI TAMPILAN SKOR (TAMBAH TOMBOL LIHAT PEMBAHASAN)
-  // ===============================================================
-  void _tampilkanSkor() {
-    int totalSoal = _soalList.length;
-    double nilaiAkhir = totalSoal > 0 ? (_score / (totalSoal * 10)) * 100 : 0;
+  void _keSoalSelanjutnya() {
+    // Validasi: Apakah sudah dijawab?
+    bool isAnswered = false;
 
+    if (_isTarakibPola3()) {
+      // Drag Drop: Minimal terisi sesuai layout
+      if (_tipeLayout == 2) {
+        isAnswered = (_droppedBox1 != null && _droppedBox2 != null);
+      } else {
+        isAnswered = (_droppedBox1 != null);
+      }
+    } else {
+      // PG: Ada index di map jawaban
+      isAnswered = _jawabanPGUser.containsKey(_currentIndex);
+    }
+
+    if (!isAnswered) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Jawab dulu sebelum lanjut ya!")),
+      );
+      return;
+    }
+
+    if (_currentIndex < _soalList.length - 1) {
+      setState(() {
+        _currentIndex++;
+        _siapkanHalamanSoal();
+      });
+    } else {
+      // Jika soal terakhir, maka Selesai
+      _selesaiKuis();
+    }
+  }
+
+  // --- LOGIKA HITUNG SKOR (FINAL) ---
+  void _selesaiKuis() {
+    int skorTotal = 0;
+    List<Map<String, dynamic>> riwayatFinal = [];
+
+    for (int i = 0; i < _soalList.length; i++) {
+      var soal = _soalList[i];
+      bool isCorrect = false;
+      String jawabanUserStr = "-";
+      String kunciStr = "-";
+
+      if (_isTarakibPola3()) {
+        // --- CEK DRAG DROP ---
+        var userAns = _jawabanDragUser[i];
+        if (userAns != null) {
+          List<dynamic> opsiAsli = soal['opsi'];
+          String k1 = _bersihkanString(_hapusLabel(opsiAsli[0].toString()));
+          String k2 = (opsiAsli.length > 1)
+              ? _bersihkanString(_hapusLabel(opsiAsli[1].toString()))
+              : "";
+
+          String u1 = _bersihkanString(userAns['box1'] ?? "");
+          String u2 = _bersihkanString(userAns['box2'] ?? "");
+
+          // Simpan string utk review
+          jawabanUserStr =
+              "${_labelBox1}: ${userAns['box1']}\n${_labelBox2}: ${userAns['box2']}";
+          kunciStr =
+              "${_labelBox1}: ${opsiAsli[0]}\n${_labelBox2}: ${opsiAsli.length > 1 ? opsiAsli[1] : '-'}";
+
+          // Logika Benar/Salah
+          if (_tipeLayout == 2) {
+            if (u1 == k1 && u2 == k2) isCorrect = true;
+          } else if (_tipeLayout == 3) {
+            String dbKey = _bersihkanString(opsiAsli[0].toString());
+            if (u1 == dbKey) isCorrect = true;
+          } else {
+            if (u1 == k1) isCorrect = true;
+          }
+        }
+      } else {
+        // --- CEK PG ---
+        if (_jawabanPGUser.containsKey(i)) {
+          int indexUser = _jawabanPGUser[i]!;
+          int indexKunci = soal['kunci'] ?? 0;
+          List<dynamic> opsi = soal['opsi'];
+
+          jawabanUserStr = opsi[indexUser].toString();
+          kunciStr = opsi[indexKunci].toString();
+
+          if (indexUser == indexKunci) isCorrect = true;
+        }
+      }
+
+      if (isCorrect) skorTotal += 10;
+
+      // Masukkan ke riwayat
+      riwayatFinal.add({
+        'pertanyaan': soal['pertanyaan'],
+        'jawaban_user': jawabanUserStr,
+        'kunci': kunciStr,
+        'status': isCorrect
+      });
+    }
+
+    _tampilkanPopUpHasil(skorTotal, riwayatFinal);
+  }
+
+  // --- POP UP & SIMPAN ---
+  void _playResultSound() async {
+    try {
+      await _sfxPlayer.play(AssetSource('audio/selesai.mp3'));
+    } catch (e) {}
+  }
+
+  Future<void> _simpanNilaiLatihan(int skor) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final supabase = Supabase.instance.client;
+      String namaUser = user.displayName ?? user.email ?? "Siswa";
+
+      // Cek Profil
+      final cekUser = await supabase
+          .from('profil_siswa')
+          .select()
+          .eq('id', user.uid)
+          .maybeSingle();
+      if (cekUser == null) {
+        await supabase
+            .from('profil_siswa')
+            .insert({'id': user.uid, 'nama_siswa': namaUser, 'total_xp': 0});
+      }
+
+      String judulBaku =
+          "Latihan ${widget.kategoriFilter} ${widget.polaFilter}";
+      await supabase.from('riwayat_skor').insert({
+        'user_id': user.uid,
+        'nama_siswa': namaUser,
+        'skor_akhir': skor,
+        'jenis': 'latihan',
+        'judul_materi': judulBaku,
+        'benar_istima': 0,
+        'benar_tarakib': 0,
+        'benar_qiraah': 0,
+        'predikat': skor >= 60 ? 'Lulus' : 'Belum Lulus',
+      });
+    } catch (e) {
+      print("Gagal simpan: $e");
+    }
+  }
+
+// --- POP UP HASIL (VERSI CANTIK / PREMIUM UI) ---
+  void _tampilkanPopUpHasil(int skor, List<Map<String, dynamic>> riwayat) {
+    _playResultSound();
+    _simpanNilaiLatihan(skor);
+
+    // Hitung persentase
+    int totalSoal = _soalList.length;
+    double nilaiPersen = totalSoal > 0 ? (skor / (totalSoal * 10)) * 100 : 0;
+
+    // Tentukan Tema Warna & Teks berdasarkan Nilai
     String pesan = "";
     String emoji = "";
-    Color warna = Colors.blue;
+    Color warnaTema = Colors.blue;
 
-    if (nilaiAkhir == 100) {
-      pesan = "Mumtaz! Luar Biasa!";
+    if (nilaiPersen == 100) {
+      pesan = "MUMTAZ!";
       emoji = "🏆";
-      warna = Colors.green;
-    } else if (nilaiAkhir >= 80) {
-      pesan = "Jayyid Jiddan!";
+      warnaTema = Colors.green;
+    } else if (nilaiPersen >= 80) {
+      pesan = "JAYYID JIDDAN!";
       emoji = "🎉";
-      warna = Colors.blue;
-    } else if (nilaiAkhir >= 60) {
-      pesan = "Jayyid! Bagus!";
+      warnaTema = Colors.blue;
+    } else if (nilaiPersen >= 60) {
+      pesan = "JAYYID!";
       emoji = "👍";
-      warna = Colors.orange;
+      warnaTema = Colors.orange;
     } else {
-      pesan = "Hamasah!";
+      pesan = "HAMASAH!"; // Semangat!
       emoji = "💪";
-      warna = Colors.redAccent;
+      warnaTema = Colors.redAccent;
     }
 
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      barrierDismissible: false, // User gabisa klik luar untuk tutup
+      builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.all(20),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        backgroundColor:
+            Colors.transparent, // Biar background transparan (efek floating)
+        child: Stack(
+          alignment: Alignment.topCenter,
+          clipBehavior: Clip.none, // Izinkan icon keluar dari kotak
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 50)),
-            const SizedBox(height: 10),
-            Text("Nilai Kamu", style: TextStyle(color: Colors.grey[600])),
-            Text("$_score",
-                style: TextStyle(
-                    fontSize: 48, fontWeight: FontWeight.bold, color: warna)),
-            const SizedBox(height: 10),
-            Text(pesan,
-                textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            // 1. KOTAK PUTIH UTAMA
+            Container(
+              margin: const EdgeInsets.only(
+                  top: 40), // Jarak biar icon gak kepotong
+              padding: const EdgeInsets.only(
+                  top: 60, left: 20, right: 20, bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      offset: Offset(0, 5))
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min, // Tinggi menyesuaikan isi
+                children: [
+                  Text(pesan,
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: warnaTema,
+                          letterSpacing: 1.5)),
+                  const SizedBox(height: 10),
+                  const Text("Nilai Kamu",
+                      style: TextStyle(color: Colors.grey, fontSize: 14)),
 
-            const SizedBox(height: 20),
-            const Divider(),
+                  // Skor Besar
+                  Text("$skor",
+                      style: TextStyle(
+                          fontSize: 60,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87)),
 
-            // --- TOMBOL LIHAT PEMBAHASAN (Updated) ---
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // 1. Generate nama file
-                  String namaFile = _generateNamaFilePdf();
+                  const SizedBox(height: 20),
 
-                  // 2. Gabungkan dengan path folder aset kamu (assets/pdfs/)
-                  String fullPath = "assets/pdfs/$namaFile";
-
-                  // 3. Buka HalamanBacaPdf yang sudah kamu buat
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HalamanBacaPdf(
-                        judul: "Pembahasan Soal",
-                        pathPdf: fullPath, // Kirim path lengkap
-                      ),
+                  // TOMBOL 1: LIHAT JAWABAN (Gradient Blue)
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                          colors: [Color(0xFF42A5F5), Color(0xFF1976D2)]),
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                  );
-                },
-                icon: const Icon(Icons.description, color: Colors.white),
-                label: const Text("LIHAT PEMBAHASAN",
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green, // Warna Hijau
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => HalamanReviewJawaban(
+                                  riwayatJawaban: riwayat))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                      ),
+                      child: const Text("LIHAT JAWABAN SAYA",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
 
-            // --- TOMBOL KEMBALI (Tetap sama) ---
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.pop(context); // Tutup Dialog
-                  Navigator.pop(context); // Kembali ke Materi
-                },
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: warna),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                child: Text("Selesai & Kembali",
-                    style:
-                        TextStyle(color: warna, fontWeight: FontWeight.bold)),
+                  // TOMBOL 2: PEMBAHASAN PDF (Gradient Green)
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                          colors: [Color(0xFF66BB6A), Color(0xFF2E7D32)]),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: () {
+                        String kat = widget.kategoriFilter;
+                        String pol = widget.polaFilter;
+                        String pdfFile = "";
+                        // Logika nama PDF (singkat)
+                        if (kat == "Qira'ah")
+                          pdfFile = "2_kj.pdf";
+                        else if (kat == "Istima'")
+                          pdfFile =
+                              "1_kj_${pol.toLowerCase().replaceAll(' ', '')}.pdf";
+                        else if (kat == "Tarakib") {
+                          if (pol != "Pola 3")
+                            pdfFile =
+                                "3_kj_${pol.toLowerCase().replaceAll(' ', '')}.pdf";
+                          else {
+                            List<String> urutan = [
+                              "Mubtada Khabar",
+                              "Kana wa Akhwatuha",
+                              "Inna wa Akhwatuha",
+                              "Fi'il Fa'il",
+                              "Maf'ul bih",
+                              "Na'at wa Man'ut",
+                              "Tawabi'",
+                              "Maf'ulat",
+                              "A'dad"
+                            ];
+                            int idx =
+                                urutan.indexOf(widget.subBabFilter ?? "") + 1;
+                            if (idx == 0) idx = 1;
+                            pdfFile = "3_kj_pola3_$idx.pdf";
+                          }
+                        }
+                        if (pdfFile.isNotEmpty) {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => HalamanBacaPdf(
+                                      judul: "Pembahasan",
+                                      pathPdf: "assets/pdfs/$pdfFile")));
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                      ),
+                      child: const Text("PEMBAHASAN (PDF)",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // TOMBOL 3: SELESAI (Simple Text)
+                  TextButton(
+                    onPressed: () {
+                      _sfxPlayer.stop();
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                    },
+                    child: Text("Selesai & Kembali",
+                        style:
+                            TextStyle(color: Colors.grey[600], fontSize: 16)),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            // --------------------------------------
+
+            // 2. ICON MELAYANG (Floating Icon)
+            Positioned(
+              top: 0,
+              child: Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: warnaTema, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 10,
+                        offset: Offset(0, 5))
+                  ],
+                ),
+                child: Text(emoji, style: const TextStyle(fontSize: 50)),
+              ),
+            ),
           ],
         ),
       ),
@@ -521,109 +725,171 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
                 onPressed: _tampilkanDialogInstruksi)
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // --- Indikator Soal 1/10 ---
-            Row(
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Progress Bar
+                  Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Progres Kuis",
+                            style: TextStyle(
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold)),
+                        Text("Soal ${_currentIndex + 1}/${_soalList.length}",
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue)),
+                      ]),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                      value: (_currentIndex + 1) / _soalList.length,
+                      color: Colors.blue,
+                      backgroundColor: Colors.grey.shade200),
+                  const SizedBox(height: 20),
+
+                  // Kotak Soal
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: Colors.grey.shade300)),
+                    child: Column(children: [
+                      if (pathAudio != null && pathAudio.isNotEmpty) ...[
+                        GestureDetector(
+                            onTap: () => _playAudio(pathAudio),
+                            child: CircleAvatar(
+                                radius: 30,
+                                backgroundColor: _isPlaying
+                                    ? Colors.redAccent
+                                    : const Color(0xFF42A5F5),
+                                child: Icon(
+                                    _isPlaying
+                                        ? Icons.pause
+                                        : Icons.volume_up_rounded,
+                                    color: Colors.white,
+                                    size: 30))),
+                        const SizedBox(height: 10),
+                      ],
+                      Text(pertanyaan,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                    ]),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Area Jawaban
+                  _isTarakibPola3()
+                      ? _buildDragDropContent()
+                      : _buildPilihanGandaUI(),
+                ],
+              ),
+            ),
+          ),
+
+          // --- AREA NAVIGASI BAWAH ---
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, boxShadow: [
+              BoxShadow(
+                  color: Colors.black12, blurRadius: 5, offset: Offset(0, -2))
+            ]),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Progres Kuis",
-                    style: TextStyle(
-                        color: Colors.grey, fontWeight: FontWeight.bold)),
-                Text(
-                  "Soal ${_currentIndex + 1}/${_soalList.length}",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.blue),
+                // Tombol KEMBALI
+                if (_currentIndex > 0)
+                  ElevatedButton.icon(
+                    onPressed: _keSoalSebelumnya,
+                    icon: const Icon(Icons.arrow_back_ios, size: 16),
+                    label: const Text("Kembali"),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                  )
+                else
+                  const SizedBox(
+                      width: 100), // Spacer biar tombol kanan tetap di kanan
+
+                // Tombol SELANJUTNYA / SELESAI
+// Tombol SELANJUTNYA / SELESAI (FIXED)
+                Directionality(
+                  textDirection:
+                      TextDirection.rtl, // Ini trik biar icon pindah ke kanan
+                  child: ElevatedButton.icon(
+                    onPressed: _keSoalSelanjutnya,
+                    icon: const Icon(Icons.arrow_back_ios,
+                        size: 16,
+                        color:
+                            Colors.white), // Pakai back_ios karena dibalik RTL
+                    label: Text(
+                      _currentIndex == _soalList.length - 1
+                          ? "Selesai"
+                          : "Selanjutnya",
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _currentIndex == _soalList.length - 1
+                          ? Colors.green
+                          : Colors.blue,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-                value: (_currentIndex + 1) / _soalList.length,
-                color: Colors.blue,
-                backgroundColor: Colors.grey.shade200),
-            const SizedBox(height: 20),
-
-            // KOTAK SOAL
-            Container(
-              padding: const EdgeInsets.all(20),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.grey.shade300)),
-              constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.35),
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    if (pathAudio != null && pathAudio.isNotEmpty) ...[
-                      GestureDetector(
-                        onTap: () => _playAudio(pathAudio),
-                        child: CircleAvatar(
-                          radius: 30,
-                          backgroundColor: _isPlaying
-                              ? Colors.redAccent
-                              : const Color(0xFF42A5F5),
-                          child: Icon(
-                              _isPlaying
-                                  ? Icons.pause
-                                  : Icons.volume_up_rounded,
-                              color: Colors.white,
-                              size: 30),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    Text(pertanyaan,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // JAWABAN
-            _isTarakibPola3()
-                ? _buildDragDropContent()
-                : _buildPilihanGandaUI(), // Tidak perlu kirim opsi lagi, karena pakai state
-          ],
-        ),
+          )
+        ],
       ),
     );
   }
 
-  // --- [UPDATE] UI PILIHAN GANDA (Menggunakan list yang sudah diacak) ---
+  // --- UI PILIHAN GANDA (DENGAN HIGHLIGHT) ---
   Widget _buildPilihanGandaUI() {
+    // Cek jawaban yang tersimpan untuk soal ini
+    int? jawabanTerpilih = _jawabanPGUser[_currentIndex];
+
     return Column(
       children: _opsiPG.map((item) {
+        int idx = item['indexAsli'];
+        bool isSelected = (jawabanTerpilih == idx);
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              // Kirim status isCorrect (true/false) bukan index
-              onPressed: () => _jawabSoalPG(item['isCorrect']),
+              onPressed: () => _pilihJawabanPG(idx),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
+                // Warna berubah jika dipilih (Biru Muda vs Putih)
+                backgroundColor:
+                    isSelected ? Colors.blue.shade50 : Colors.white,
+                foregroundColor:
+                    isSelected ? Colors.blue.shade900 : Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: isSelected ? 0 : 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: Colors.grey.shade300),
+                  side: BorderSide(
+                      color: isSelected ? Colors.blue : Colors.grey.shade300,
+                      width: isSelected ? 2 : 1),
                 ),
               ),
               child: Text(item['teks'],
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 15)),
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal)),
             ),
           ),
         );
@@ -631,22 +897,23 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     );
   }
 
+  // --- UI DRAG DROP ---
   Widget _buildDragDropContent() {
     return Column(
       children: [
         if (_tipeLayout == 2)
           Row(children: [
             Expanded(
-                child: _buildDropZone(_labelBox1, _droppedBox1,
-                    (v) => setState(() => _droppedBox1 = v))),
+                child: _buildDropZone(
+                    _labelBox1, _droppedBox1, (v) => _terimaDrop('box1', v))),
             const SizedBox(width: 10),
             Expanded(
-                child: _buildDropZone(_labelBox2, _droppedBox2,
-                    (v) => setState(() => _droppedBox2 = v))),
+                child: _buildDropZone(
+                    _labelBox2, _droppedBox2, (v) => _terimaDrop('box2', v))),
           ])
         else
-          _buildDropZone(_labelBox1, _droppedBox1,
-              (v) => setState(() => _droppedBox1 = v)),
+          _buildDropZone(
+              _labelBox1, _droppedBox1, (v) => _terimaDrop('box1', v)),
         const SizedBox(height: 20),
         const Text("Pilihan Kata:",
             style: TextStyle(fontWeight: FontWeight.bold)),
@@ -656,29 +923,15 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
           runSpacing: 10,
           alignment: WrapAlignment.center,
           children: _pilihanKataDrag.map((kata) {
-            bool isUsed = (kata == _droppedBox1 || kata == _droppedBox2);
             return Draggable<String>(
               data: kata,
-              feedback: Material(
-                  color: Colors.transparent, child: _chipKata(kata, true)),
-              childWhenDragging:
-                  Opacity(opacity: 0.3, child: _chipKata(kata, false)),
-              child: isUsed
-                  ? const SizedBox(width: 50, height: 30)
-                  : _chipKata(kata, false),
+              feedback:
+                  Material(color: Colors.transparent, child: _chipKata(kata)),
+              childWhenDragging: Opacity(opacity: 0.3, child: _chipKata(kata)),
+              child: _chipKata(kata),
             );
           }).toList(),
         ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-              onPressed: _cekJawabanDragDrop,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child:
-                  const Text("LANJUT", style: TextStyle(color: Colors.white))),
-        )
       ],
     );
   }
@@ -716,7 +969,7 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     );
   }
 
-  Widget _chipKata(String kata, bool isFeedback) {
+  Widget _chipKata(String kata) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -728,6 +981,62 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
               fontSize: 16,
               color: Colors.black,
               decoration: TextDecoration.none)),
+    );
+  }
+}
+
+class HalamanReviewJawaban extends StatelessWidget {
+  final List<Map<String, dynamic>> riwayatJawaban;
+  const HalamanReviewJawaban({super.key, required this.riwayatJawaban});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+          title: const Text("Review Jawaban"),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: riwayatJawaban.length,
+        itemBuilder: (context, index) {
+          final data = riwayatJawaban[index];
+          bool isCorrect = data['status'];
+          return Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text("Soal ${index + 1}",
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey)),
+                          Icon(isCorrect ? Icons.check_circle : Icons.cancel,
+                              color: isCorrect ? Colors.green : Colors.red)
+                        ]),
+                    const SizedBox(height: 8),
+                    Text(data['pertanyaan'],
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    Text("Jawaban Kamu: ${data['jawaban_user']}",
+                        style: TextStyle(
+                            color: isCorrect ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.bold)),
+                    if (!isCorrect)
+                      Text("Kunci: ${data['kunci']}",
+                          style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold)),
+                  ]),
+            ),
+          );
+        },
+      ),
     );
   }
 }

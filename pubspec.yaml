@@ -48,11 +48,13 @@ dependencies:
   firebase_storage: ^11.6.9
   supabase_flutter: ^2.8.4
   image_picker: ^1.0.0
+  
 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -107,3 +109,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
+flutter_launcher_icons:
+  android: "launcher_icon" # Nama icon di Android
+  ios: true                # Generate juga untuk iOS
+  image_path: "assets/icons/logo_app.png" # <--- Sesuaikan dengan lokasi gambarmu
+  min_sdk_android: 21      # Opsional, biar aman di Android lama
+  adaptive_icon_background: "#FFFFFF" # Warna background (Opsional, untuk Android 8+)
+  adaptive_icon_foreground: "assets/icons/logo_app.png" # Gambar depan (biasanya sama dgn image_path)

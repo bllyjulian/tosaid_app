@@ -385,7 +385,7 @@ langsung
                                 'latihan': [],
                               },
                               {
-                                'judul': "Taḥlil al-Akhathā’",
+                                'judul': "Tahlil al-Akhathā’",
                                 'sub_bab': [
                                   {
                                     'judul_arab': "تَحْلِيلُ الأَخْطَاءِ",
@@ -630,55 +630,103 @@ class HeaderSection extends StatefulWidget {
 
 class _HeaderSectionState extends State<HeaderSection> {
   String _namaUser = "Loading...";
-  String? _avatarUrl; // Variabel untuk menyimpan path/url foto
+  String? _avatarUrl;
+
+  // Variabel baru untuk XP dan Level
+  int _totalXp = 0;
+  int _levelUser = 1;
+  String _namaPangkat = "Mubtadi"; // Pemula
 
   @override
   void initState() {
     super.initState();
-    _ambilDataUser();
+    _ambilDataLengkap();
   }
 
-  void _ambilDataUser() async {
+  // Fungsi refresh data saat halaman dibangun ulang
+  Future<void> _ambilDataLengkap() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      try {
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
+      // 1. AMBIL NAMA & FOTO DARI FIREBASE (Seperti sebelumnya)
+      _ambilProfilFirebase(user);
 
-        if (mounted) {
-          setState(() {
-            if (userDoc.exists) {
-              var data = userDoc.data() as Map<String, dynamic>;
-              // Ambil Nama
-              _namaUser = data['nama'] ?? user.displayName ?? "User";
-              // Ambil Foto (bisa link http atau path assets)
-              _avatarUrl = data['avatar_url'];
-            } else {
-              _namaUser = user.displayName ?? "User";
-            }
-          });
-        }
-      } catch (e) {
-        if (mounted) setState(() => _namaUser = "User");
-      }
+      // 2. AMBIL XP DARI SUPABASE (Baru)
+      _ambilXpSupabase(user.uid);
     }
   }
 
-  // --- FUNGSI PINTAR UNTUK MENENTUKAN SUMBER GAMBAR ---
+  Future<void> _ambilProfilFirebase(User user) async {
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (mounted) {
+        setState(() {
+          if (userDoc.exists) {
+            var data = userDoc.data() as Map<String, dynamic>;
+            _namaUser = data['nama'] ?? user.displayName ?? "User";
+            _avatarUrl = data['avatar_url'];
+          } else {
+            _namaUser = user.displayName ?? "User";
+          }
+        });
+      }
+    } catch (e) {
+      print("Error Firebase: $e");
+    }
+  }
+
+  // --- LOGIKA LEVELING SYSTEM ---
+  Future<void> _ambilXpSupabase(String uid) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // Ambil data total_xp
+      final response = await supabase
+          .from('profil_siswa')
+          .select('total_xp')
+          .eq('id', uid)
+          .maybeSingle();
+
+      int xp = response != null ? (response['total_xp'] ?? 0) : 0;
+
+      // HITUNG LEVEL BERDASARKAN XP
+      int level = 1;
+      String pangkat = "Mubtadi"; // Level 1
+
+      if (xp >= 50) {
+        level = 3;
+        pangkat = "Mutawassit"; // Level 3 (Menengah)
+      } else if (xp >= 10) {
+        level = 2;
+        pangkat = "Mubtadi Lanjut"; // Level 2
+      } else {
+        level = 1;
+        pangkat = "Mubtadi"; // Level 1
+      }
+
+      if (mounted) {
+        setState(() {
+          _totalXp = xp;
+          _levelUser = level;
+          _namaPangkat = pangkat;
+        });
+      }
+    } catch (e) {
+      print("Error Supabase XP: $e");
+    }
+  }
+
   ImageProvider _getAvatarImage() {
     if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
-      // 1. Jika link internet (dari Google/Upload lama)
       if (_avatarUrl!.startsWith('http')) {
         return NetworkImage(_avatarUrl!);
-      }
-      // 2. Jika path aset lokal (pilihan Avatar 1-10)
-      else {
+      } else {
         return AssetImage(_avatarUrl!);
       }
     }
-    // 3. Default jika belum punya foto
     return const AssetImage('assets/images/profil.png');
   }
 
@@ -690,15 +738,12 @@ class _HeaderSectionState extends State<HeaderSection> {
         // --- BAGIAN KIRI (FOTO & NAMA) ---
         Row(
           children: [
-            // Lingkaran Foto
             CircleAvatar(
               radius: 26,
               backgroundColor: Colors.grey[200],
-              backgroundImage:
-                  _getAvatarImage(), // Panggil fungsi pintar di sini
+              backgroundImage: _getAvatarImage(),
             ),
             const SizedBox(width: 12),
-            // Teks Nama & Level
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -707,29 +752,37 @@ class _HeaderSectionState extends State<HeaderSection> {
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const Text(
-                  "Level 1 - Mubtadi",
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                // TAMPILKAN LEVEL & PANGKAT DINAMIS
+                Text(
+                  "Level $_levelUser - $_namaPangkat",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],
             ),
           ],
         ),
 
-        // --- BAGIAN KANAN (KOIN/XP) ---
+        // --- BAGIAN KANAN (XP ASLI DARI DATABASE) ---
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF8E1), // Warna background kuning muda
+            color: const Color(0xFFFFF8E1),
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color:
+                    Colors.amber.shade200), // Tambah border dikit biar cantik
           ),
           child: Row(
             children: [
               Image.asset('assets/icons/koin.png', width: 20),
               const SizedBox(width: 6),
-              const Text(
-                "1250 XP",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              // TAMPILKAN TOTAL XP
+              Text(
+                "$_totalXp XP",
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.orange),
               ),
             ],
           ),
