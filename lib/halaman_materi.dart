@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'halaman_baca_pdf.dart';
-import 'halaman_kuis.dart'; // Import Halaman Kuis Langsung (Tanpa Pengantar Audio)
+import 'halaman_kuis.dart';
 
 class DaftarMateriPage extends StatelessWidget {
   final String title;
   final List<Map<String, dynamic>> dataMateri;
 
-  // Parameter Baru untuk Logika Tarakib Pola 3
+  // Parameter untuk Logika Tarakib
   final bool showLatihanButton;
   final Map<String, String>? kategoriInfo;
 
@@ -14,12 +14,26 @@ class DaftarMateriPage extends StatelessWidget {
     super.key,
     required this.title,
     required this.dataMateri,
-    this.showLatihanButton = false, // Default false (tidak muncul)
+    this.showLatihanButton = false,
     this.kategoriInfo,
   });
 
   @override
   Widget build(BuildContext context) {
+    // --- LOGIKA PENGECEKAN POLA ---
+    // Kita cek apakah ini Tarakib Pola 1 atau Pola 2?
+    // Jika iya, kita matikan tombol latihan sub-bab (biar bersih).
+    bool isTarakibPolaDasar = false;
+    if (kategoriInfo != null) {
+      String kat = kategoriInfo!['kategori'] ?? "";
+      String pol = kategoriInfo!['pola'] ?? "";
+
+      // Jika Tarakib & (Pola 1 ATAU Pola 2), tandai sebagai pola dasar
+      if (kat == "Tarakib" && (pol == "Pola 1" || pol == "Pola 2")) {
+        isTarakibPolaDasar = true;
+      }
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -63,6 +77,7 @@ class DaftarMateriPage extends StatelessWidget {
               itemCount: dataMateri.length,
               itemBuilder: (context, index) {
                 final materi = dataMateri[index];
+
                 return Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(16),
@@ -79,7 +94,7 @@ class DaftarMateriPage extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      // Bagian Atas: Judul Materi & Icon PDF (Bisa diklik untuk baca)
+                      // Bagian Atas: Judul Materi & Icon PDF
                       InkWell(
                         onTap: () {
                           String pathPdf = materi['file_pdf'] ?? "";
@@ -131,19 +146,19 @@ class DaftarMateriPage extends StatelessWidget {
                         ),
                       ),
 
-                      // Bagian Bawah: Tombol Latihan (Hanya muncul jika showLatihanButton == true)
-                      if (showLatihanButton) ...[
+                      // --- PERBAIKAN DI SINI ---
+                      // Tombol Latihan HANYA muncul jika:
+                      // 1. showLatihanButton bernilai true (dari main menu)
+                      // 2. DAN BUKAN Tarakib Pola 1 atau Pola 2 (isTarakibPolaDasar == false)
+                      if (showLatihanButton && !isTarakibPolaDasar) ...[
                         const SizedBox(height: 12),
                         const Divider(),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              // 1. Ambil Judul (Sekarang isinya Latin kan? misal "Mubtada Khabar")
                               String judulUntukFilter =
                                   materi['judul_arab'] ?? "";
-
-                              // 2. [BARU] Ambil Instruksi dari main.dart
                               String? teksInstruksi = materi['instruksi'];
 
                               Navigator.push(
@@ -151,15 +166,9 @@ class DaftarMateriPage extends StatelessWidget {
                                 MaterialPageRoute(
                                   builder: (context) => HalamanKuisPage(
                                     title: "Latihan: $judulUntukFilter",
-
-                                    // Data Kategori & Pola (Tetap)
                                     kategoriFilter: kategoriInfo!['kategori']!,
                                     polaFilter: kategoriInfo!['pola']!,
-
-                                    // [PENTING 1] Filter Sub-Bab (Jangan dikomen, ini wajib biar soalnya spesifik)
                                     subBabFilter: judulUntukFilter,
-
-                                    // [PENTING 2] Kirim Instruksi ke Kuis
                                     instruksi: teksInstruksi,
                                   ),
                                 ),

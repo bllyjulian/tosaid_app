@@ -454,40 +454,56 @@ class _HalamanKuisPageState extends State<HalamanKuisPage> {
     } catch (e) {}
   }
 
-  Future<void> _simpanNilaiLatihan(int skor) async {
+  // --- UPDATE PENTING: FORMAT JUDUL HARUS SAMA DENGAN MISI TARGET ---
+  Future<void> _simpanNilaiLatihan(int skorAkhir) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     try {
       final supabase = Supabase.instance.client;
       String namaUser = user.displayName ?? user.email ?? "Siswa";
 
-      // Cek Profil
+      // 1. Cek & Buat Profil Siswa (Wajib ada biar gak error Foreign Key)
       final cekUser = await supabase
           .from('profil_siswa')
           .select()
           .eq('id', user.uid)
           .maybeSingle();
+
       if (cekUser == null) {
         await supabase
             .from('profil_siswa')
             .insert({'id': user.uid, 'nama_siswa': namaUser, 'total_xp': 0});
       }
 
+      // 2. Tentukan Judul Baku (PENTING untuk Misi Target)
+      // Format: "Latihan [Kategori] [Pola]" -> Contoh: "Latihan Istima' Pola 1"
       String judulBaku =
           "Latihan ${widget.kategoriFilter} ${widget.polaFilter}";
+
+      // 3. Simpan ke Database
       await supabase.from('riwayat_skor').insert({
         'user_id': user.uid,
         'nama_siswa': namaUser,
-        'skor_akhir': skor,
-        'jenis': 'latihan',
+        'skor_akhir': skorAkhir,
+
+        // --- BAGIAN INI YANG DIPERBAIKI BIAR GAK NULL ---
+        'kategori': widget
+            .kategoriFilter, // Biar kolom kategori terisi (Istima'/Tarakib/dll)
+        'jenis': 'latihan', // Biar terbedakan dengan 'simulasi'
         'judul_materi': judulBaku,
+        // ------------------------------------------------
+
         'benar_istima': 0,
         'benar_tarakib': 0,
         'benar_qiraah': 0,
-        'predikat': skor >= 60 ? 'Lulus' : 'Belum Lulus',
+        'predikat': skorAkhir >= 60 ? 'Lulus' : 'Belum Lulus',
+        // created_at otomatis diisi 'now()' oleh Supabase
       });
+
+      print("Berhasil simpan skor: $judulBaku");
     } catch (e) {
-      print("Gagal simpan: $e");
+      print("Gagal simpan nilai latihan: $e");
     }
   }
 
