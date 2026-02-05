@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart'; // Import Animasi
 import 'halaman_materi.dart';
 import 'halaman_kuis.dart';
 import 'halaman_pengantar.dart';
+import 'halaman_evaluasi_istima.dart';
+import 'halaman_evaluasi_qiraah.dart';
 
 class DaftarBabPage extends StatelessWidget {
   final String title;
@@ -22,8 +25,22 @@ class DaftarBabPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cek apakah ini menu Qira'ah
+    // 1. Cek Kategori
     bool isQiraah = kategoriDatabase == "Qira'ah";
+    bool isIstima = kategoriDatabase == "Istima'";
+
+    // Evaluasi muncul di Qira'ah & Istima
+    bool showEvaluasiAkhir = isIstima || isQiraah;
+
+    // Warna Kartu Kuis
+    List<Color> warnaEvaluasi = isQiraah
+        ? [Colors.green.shade400, Colors.green.shade700]
+        : [const Color(0xFFFF9800), const Color(0xFFF57C00)];
+
+    // LOGIKA NAMA KUIS (REQ USER: Kuis Istima / Kuis Qiraah)
+    String judulKuis = isIstima
+        ? "Kuis Istima"
+        : (isQiraah ? "Kuis Qiraah" : "Evaluasi Akhir");
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -42,218 +59,279 @@ class DaftarBabPage extends StatelessWidget {
         ),
       ),
 
+      // TIDAK ADA BOTTOM NAVIGATION BAR (Tombol dipindah ke body)
+
       // ============================================================
-      // BAGIAN TOMBOL BAWAH (KHUSUS QIRA'AH)
+      // BODY: LIST DENGAN URUTAN BAB -> TOMBOL LATIHAN -> KARTU KUIS
       // ============================================================
-      bottomNavigationBar: isQiraah
-          ? Container(
-              padding: const EdgeInsets.all(20),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          // 1. DAFTAR BAB (MATERI)
+          ...dataBab.asMap().entries.map((entry) {
+            int index = entry.key;
+            var bab = entry.value;
+
+            // Cek Tarakib Pola 3
+            bool isTarakibPola3 = (kategoriDatabase == "Tarakib" && index == 2);
+
+            // Logic Hide Tombol Kecil:
+            // 1. Tarakib Pola 3 -> Hide
+            // 2. Qira'ah -> Hide (Karena ada tombol besar di bawah list bab)
+            bool hideTombolLatihanDiSini = isTarakibPola3 || isQiraah;
+            bool showTombolLatihanDiDalam = !isQiraah;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.grey.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
-                  )
+                      color: Colors.grey.shade100,
+                      blurRadius: 6,
+                      offset: const Offset(0, 4))
                 ],
               ),
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // KHUSUS QIRA'AH: LANGSUNG KE KUIS (Tanpa Dialog)
-                  // Kita paksa ambil soal "Pola 1" karena Pola lain kosong
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HalamanKuisPage(
-                        title: "Latihan Qira'ah",
-                        kategoriFilter: "Qira'ah",
-                        polaFilter: "Pola 1", // <--- KITA PAKSA POLA 1
-                        instruksi:
-                            "langsung", // <--- Kode rahasia agar dialog tidak muncul
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.play_circle_fill, color: Colors.white),
-                label: const Text("KERJAKAN LATIHAN",
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: color,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            )
-          : null,
-
-      body: ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: dataBab.length,
-        itemBuilder: (context, index) {
-          // Cek Tarakib Pola 3 (Index ke-2)
-          bool isTarakibPola3 = (kategoriDatabase == "Tarakib" && index == 2);
-
-          // 1. LOGIKA MENYEMBUNYIKAN TOMBOL KECIL (DI LIST)
-          // Sembunyikan tombol kecil JIKA:
-          // - Tarakib Pola 3 (karena latihannya ada di dalam materi)
-          // - ATAU Qira'ah (karena tombolnya SUDAH ADA DI BAWAH LAYAR)
-          bool hideTombolLatihanDiSini = isTarakibPola3 || isQiraah;
-
-          // 2. LOGIKA TOMBOL DI HALAMAN DALAM (DAFTAR MATERI)
-          // Tampilkan tombol per-materi JIKA:
-          // - BUKAN Qira'ah. (Qira'ah bersih dari tombol latihan di dalam materi)
-          // - Tarakib Pola 3 akan jadi TRUE di sini, makanya nanti muncul di dalam.
-          bool showTombolLatihanDiDalam = !isQiraah;
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.grey.shade100,
-                    blurRadius: 6,
-                    offset: const Offset(0, 4))
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("POLA ${index + 1}",
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                const SizedBox(height: 6),
-                Text(dataBab[index]['judul'],
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        height: 1.3)),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    // TOMBOL MATERI (Selalu Muncul)
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => DaftarMateriPage(
-                                title: "Materi Bab ${index + 1}",
-                                dataMateri: dataBab[index]['sub_bab'] ?? [],
-
-                                // Kirim logika tombol dalam ke halaman materi
-                                showLatihanButton: showTombolLatihanDiDalam,
-
-                                kategoriInfo: {
-                                  'kategori': kategoriDatabase,
-                                  'pola': "Pola ${index + 1}",
-                                  'kode_kat': kodeKategoriFile,
-                                  'kode_pol': "pola${index + 1}",
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                        icon: Image.asset('assets/icons/materi.png',
-                            width: 18, color: Colors.white),
-                        label: const Text("Pelajari Materi",
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 11)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF42A5F5),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-
-                    // TOMBOL KERJAKAN LATIHAN (KECIL)
-                    // Hanya muncul jika tidak disembunyikan oleh logika di atas
-                    if (!hideTombolLatihanDiSini) ...[
-                      const SizedBox(width: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("POLA ${index + 1}",
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  Text(bab['judul'],
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          height: 1.3)),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      // TOMBOL MATERI
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () {
-                            String polaDB = "Pola ${index + 1}";
-                            String kodePolFile = "pola${index + 1}";
-
-                            // --- LOGIKA PEMBAGIAN NAVIGASI ---
-
-                            // KASUS 1: ISTIMA' (Butuh Audio Pengantar Dulu)
-                            if (kategoriDatabase == "Istima'") {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => HalamanPengantarPage(
-                                    title: "Latihan $polaDB",
-                                    kategoriFilter: kategoriDatabase,
-                                    polaFilter: polaDB,
-                                    kodeKategori: kodeKategoriFile,
-                                    kodePola: kodePolFile,
-                                  ),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DaftarMateriPage(
+                                  title: "Materi Bab ${index + 1}",
+                                  dataMateri: bab['sub_bab'] ?? [],
+                                  showLatihanButton: showTombolLatihanDiDalam,
+                                  kategoriInfo: {
+                                    'kategori': kategoriDatabase,
+                                    'pola': "Pola ${index + 1}",
+                                    'kode_kat': kodeKategoriFile,
+                                    'kode_pol': "pola${index + 1}",
+                                  },
                                 ),
-                              );
-                            }
-                            // KASUS 2: TARAKIB (Langsung Kuis + Dialog Instruksi)
-                            else if (kategoriDatabase == "Tarakib") {
-                              // Ambil teks instruksi dari dataBab di main.dart
-                              // Kita ambil dari sub-bab pertama sebagai perwakilan
-                              String teksInstruksi = "";
-                              try {
-                                // Ambil instruksi dari materi pertama di pola ini
-                                teksInstruksi = dataBab[index]['sub_bab'][0]
-                                        ['instruksi'] ??
-                                    "";
-                              } catch (e) {
-                                teksInstruksi = "Kerjakan soal dengan teliti.";
-                              }
-
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => HalamanKuisPage(
-                                    title: "Latihan $polaDB",
-                                    kategoriFilter: kategoriDatabase,
-                                    polaFilter: polaDB,
-
-                                    // Kirim teks instruksi Arab ke halaman kuis
-                                    instruksi: teksInstruksi,
-                                  ),
-                                ),
-                              );
-                            }
+                              ),
+                            );
                           },
-                          icon: Image.asset('assets/icons/latihan.png',
+                          icon: Image.asset('assets/icons/materi.png',
                               width: 18, color: Colors.white),
-                          label: const Text("Kerjakan Latihan",
+                          label: const Text("Pelajari Materi",
                               style:
                                   TextStyle(color: Colors.white, fontSize: 11)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF9800),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)),
-                            elevation: 0,
-                          ),
+                              backgroundColor: const Color(0xFF42A5F5),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              elevation: 0),
                         ),
                       ),
-                    ]
-                  ],
+
+                      // TOMBOL LATIHAN KECIL (Hide untuk Qira'ah)
+                      if (!hideTombolLatihanDiSini) ...[
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              String polaDB = "Pola ${index + 1}";
+                              String kodePolFile = "pola${index + 1}";
+
+                              if (kategoriDatabase == "Istima'") {
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            HalamanPengantarPage(
+                                                title: "Latihan $polaDB",
+                                                kategoriFilter:
+                                                    kategoriDatabase,
+                                                polaFilter: polaDB,
+                                                kodeKategori: kodeKategoriFile,
+                                                kodePola: kodePolFile)));
+                              } else if (kategoriDatabase == "Tarakib") {
+                                String teksInstruksi = "";
+                                try {
+                                  teksInstruksi =
+                                      bab['sub_bab'][0]['instruksi'] ?? "";
+                                } catch (e) {
+                                  teksInstruksi =
+                                      "Kerjakan soal dengan teliti.";
+                                }
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) => HalamanKuisPage(
+                                            title: "Latihan $polaDB",
+                                            kategoriFilter: kategoriDatabase,
+                                            polaFilter: polaDB,
+                                            instruksi: teksInstruksi)));
+                              }
+                            },
+                            icon: Image.asset('assets/icons/latihan.png',
+                                width: 18, color: Colors.white),
+                            label: const Text("Kerjakan Latihan",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 11)),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF9800),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                                elevation: 0),
+                          ),
+                        ),
+                      ]
+                    ],
+                  )
+                ],
+              ),
+            )
+                .animate(delay: (100 * index).ms)
+                .fadeIn(duration: 500.ms)
+                .slideX(begin: 0.1, end: 0);
+          }),
+
+          // 2. TOMBOL LATIHAN QIRA'AH (KHUSUS QIRA'AH)
+          // POSISI: DI ATAS KARTU KUIS
+          if (isQiraah) ...[
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => HalamanKuisPage(
+                      title: "Latihan Qira'ah",
+                      kategoriFilter: "Qira'ah",
+                      polaFilter: "Pola 1",
+                      instruksi: "langsung",
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.play_circle_fill, color: Colors.white),
+              label: const Text("KERJAKAN LATIHAN",
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                minimumSize: const Size(double.infinity, 55),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
+                elevation: 4,
+                shadowColor: color.withOpacity(0.4),
+              ),
+            ).animate(delay: 400.ms).fadeIn().slideY(begin: 0.2, end: 0),
+            const SizedBox(height: 30),
+          ],
+
+          // 3. KARTU KUIS / EVALUASI (PALING BAWAH)
+          if (showEvaluasiAkhir)
+            Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: warnaEvaluasi),
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                            color: warnaEvaluasi[0].withOpacity(0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5))
+                      ]),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.stars,
+                              color: Colors.white, size: 30),
+                          const SizedBox(width: 10),
+                          // JUDUL SESUAI REQUEST (Kuis Istima / Qiraah)
+                          Text(judulKuis,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        isIstima
+                            ? "Uji kemampuan menyimakmu dengan Tebak Gambar & Audio!"
+                            : "Uji pemahaman bacaan dan kosakata Qira'ah!",
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                      const SizedBox(height: 15),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            if (isIstima) {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const HalamanEvaluasiIstima()));
+                            } else if (isQiraah) {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const HalamanEvaluasiQiraah()));
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: isQiraah
+                                  ? Colors.green.shade800
+                                  : Colors.orange,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10))),
+                          child: const Text("MULAI KUIS",
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                    ],
+                  ),
                 )
+                    // ANIMASI KARTU KUIS
+                    .animate(
+                        onPlay: (controller) =>
+                            controller.repeat(reverse: true))
+                    .shimmer(
+                        duration: 2000.ms, color: Colors.white.withOpacity(0.3))
+                    .animate()
+                    .fadeIn(duration: 600.ms)
+                    .slideY(begin: 0.2, end: 0),
+                const SizedBox(height: 30),
               ],
             ),
-          );
-        },
+        ],
       ),
     );
   }

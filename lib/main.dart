@@ -5,11 +5,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Tambahkan 'hide User' di belakangnya
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:flutter_animate/flutter_animate.dart'; // <--- IMPORT PENTING
 
 // --- IMPORT HALAMAN ---
-import 'daftar_bab.dart'; // Import ini PENTING
+import 'daftar_bab.dart';
 import 'halaman_simulasi.dart';
 import 'halaman_forum.dart';
 import 'halaman_login.dart';
@@ -17,7 +17,7 @@ import 'halaman_leaderboard.dart';
 import 'halaman_target.dart';
 import 'halaman_rapor.dart';
 import 'halaman_profil.dart';
-import 'halaman_pengantar_kategori.dart'; // Import ini PENTING
+import 'halaman_pengantar_kategori.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,8 +48,8 @@ void main() async {
     print("FATAL ERROR FIREBASE: $e");
   }
   await Supabase.initialize(
-    url: 'https://nibjtzhsngsnugjihzzc.supabase.co', // Ganti Project URL
-    anonKey: 'sb_secret_fbqOGIZFz7lSO99_G5wbmQ_FRLd9OHv', // Ganti Anon Key
+    url: 'https://nibjtzhsngsnugjihzzc.supabase.co',
+    anonKey: 'sb_secret_fbqOGIZFz7lSO99_G5wbmQ_FRLd9OHv',
   );
   runApp(const TosaApp());
 }
@@ -63,9 +63,13 @@ class TosaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'TOSA App',
       theme: ThemeData(
-        textTheme: GoogleFonts.poppinsTextTheme(),
+        textTheme: GoogleFonts.nunitoTextTheme(
+          // Ganti ke Nunito biar ramah
+          Theme.of(context).textTheme,
+        ),
         scaffoldBackgroundColor: Colors.white,
         primarySwatch: Colors.blue,
+        useMaterial3: true,
       ),
       home: const LoginPage(),
     );
@@ -144,17 +148,30 @@ class HomePageContent extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const HeaderSection(),
+            // 1. ANIMASI HEADER (Turun dari atas)
+            const HeaderSection()
+                .animate()
+                .fadeIn(duration: 600.ms)
+                .slideY(begin: -0.2, end: 0, curve: Curves.easeOut),
+
             const SizedBox(height: 24),
-            const TargetCard(),
+
+            // 2. ANIMASI TARGET (Geser dari kiri)
+            const TargetCard()
+                .animate(delay: 200.ms)
+                .fadeIn(duration: 600.ms)
+                .slideX(begin: -0.2, end: 0, curve: Curves.easeOut),
+
             const SizedBox(height: 24),
+
             const Text(
               "Materi & Latihan",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            ).animate(delay: 300.ms).fadeIn(),
+
             const SizedBox(height: 16),
 
-            // GRID MENU UTAMA
+            // GRID MENU UTAMA (Muncul berurutan)
             Row(
               children: [
                 // === MENU 1: ISTIMA' ===
@@ -170,18 +187,15 @@ class HomePageContent extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (context) => HalamanPengantarKategoriPage(
                             title: "Pengantar Istima'",
-                            pathPdf:
-                                "assets/pdfs/1_intro.pdf", // Pastikan file ada di assets
-
-                            // DATA YANG DIBAWA UNTUK HALAMAN SELANJUTNYA:
+                            pathPdf: "assets/pdfs/1_intro.pdf",
                             titleDaftarBab: "Istima' (Listening)",
                             colorDaftarBab: const Color(0xFF42A5F5),
                             kategoriDatabase: "Istima'",
                             kodeKategoriFile: "1",
-
-                            // LIST DATA BAB (JANGAN PAKAI const DI DEPAN LIST INI)
                             dataBab: [
-                              // --- BAB 1 ---
+                              // ... DATA BAB ISTIMA KAMU ...
+                              // (Saya persingkat biar tidak kepanjangan di sini,
+                              //  isinya sama persis dengan kodemu yang tadi)
                               {
                                 'judul': "an-Naw‘ al-Awwal",
                                 'sub_bab': [
@@ -201,7 +215,6 @@ class HomePageContent extends StatelessWidget {
                                 ],
                                 'latihan': [],
                               },
-                              // --- BAB 2 ---
                               {
                                 'judul': "an-Naw‘ ats-Tsānī",
                                 'sub_bab': [
@@ -210,11 +223,10 @@ class HomePageContent extends StatelessWidget {
                                     'judul_latin': 'Dialog Singkat',
                                     'file_pdf':
                                         'assets/pdfs/1_pola2_materi1.pdf'
-                                  },
+                                  }
                                 ],
                                 'latihan': [],
                               },
-                              // --- BAB 3 ---
                               {
                                 'judul': "an-Naw‘ ats-Tsālis",
                                 'sub_bab': [
@@ -223,11 +235,10 @@ class HomePageContent extends StatelessWidget {
                                     'judul_latin': 'Dialog Panjang',
                                     'file_pdf':
                                         'assets/pdfs/1_pola3_materi1.pdf'
-                                  },
+                                  }
                                 ],
                                 'latihan': [],
                               },
-                              // --- BAB 4 ---
                               {
                                 'judul': "an-Naw‘ ar-Rābi‘",
                                 'sub_bab': [
@@ -236,7 +247,7 @@ class HomePageContent extends StatelessWidget {
                                     'judul_latin': 'Teks / Pidato',
                                     'file_pdf':
                                         'assets/pdfs/1_pola4_materi1.pdf'
-                                  },
+                                  }
                                 ],
                                 'latihan': [],
                               },
@@ -246,7 +257,13 @@ class HomePageContent extends StatelessWidget {
                       );
                     },
                   ),
-                ),
+                )
+                    .animate(delay: 400.ms) // Delay
+                    .fadeIn(duration: 500.ms)
+                    .scale(
+                        begin: const Offset(0.8, 0.8),
+                        end: const Offset(1, 1)), // Efek Pop-up
+
                 const SizedBox(width: 16),
 
                 // === MENU 2: QIRA'AH ===
@@ -268,6 +285,7 @@ class HomePageContent extends StatelessWidget {
                             kategoriDatabase: "Qira'ah",
                             kodeKategoriFile: "2",
                             dataBab: [
+                              // ... DATA BAB QIRAAH KAMU ...
                               {
                                 'judul': "Ta' yinu al Maudhu",
                                 'sub_bab': [
@@ -276,13 +294,12 @@ class HomePageContent extends StatelessWidget {
                                     'judul_latin': 'Menentukan topik bacaan',
                                     'file_pdf':
                                         'assets/pdfs/2_pola1_materi1.pdf',
-                                    'instruksi': '''
-langsung
-''',
-                                  },
+                                    'instruksi': 'langsung'
+                                  }
                                 ],
                                 'latihan': [],
                               },
+                              // ... dst (isi sesuai datamu) ...
                               {
                                 'judul': "Ta‘yīnu al-Fikrah al-Ra’īsiyyah",
                                 'sub_bab': [
@@ -340,13 +357,17 @@ langsung
                       );
                     },
                   ),
-                ),
+                )
+                    .animate(delay: 500.ms) // Delay lebih lama
+                    .fadeIn(duration: 500.ms)
+                    .scale(
+                        begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
               ],
             ),
 
             const SizedBox(height: 16),
 
-            // GRID BARIS 2 (TARAKIB)
+            // GRID BARIS 2 (TARAKIB & SAMPING)
             Row(
               children: [
                 Expanded(
@@ -569,7 +590,8 @@ Pilihan jawaban:
                       );
                     },
                   ),
-                ),
+                ).animate(delay: 600.ms).fadeIn(duration: 500.ms).scale(
+                    begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
 
                 const SizedBox(width: 16),
 
@@ -589,8 +611,13 @@ Pilihan jawaban:
                                   builder: (context) =>
                                       const HalamanForumPage()));
                         },
-                      ),
+                      )
+                          .animate(delay: 700.ms)
+                          .fadeIn(duration: 500.ms)
+                          .slideX(begin: 0.2, end: 0), // Geser dari kanan
+
                       const SizedBox(height: 16),
+
                       SmallMenuCard(
                         title: "Leaderboard",
                         subtitle: "-Peringkat",
@@ -603,14 +630,28 @@ Pilihan jawaban:
                                   builder: (context) =>
                                       const HalamanLeaderboardPage()));
                         },
-                      ),
+                      )
+                          .animate(delay: 800.ms)
+                          .fadeIn(duration: 500.ms)
+                          .slideX(begin: 0.2, end: 0),
                     ],
                   ),
                 ),
               ],
             ),
+
             const SizedBox(height: 24),
-            const SimulasiCard(),
+
+            // 3. ANIMASI SIMULASI (SHIMMER EFFECT/BERKILAU)
+            const SimulasiCard()
+                .animate(delay: 1000.ms) // Muncul paling akhir
+                .fadeIn(duration: 800.ms)
+                .slideY(begin: 0.2, end: 0)
+                // Efek Kilau Berulang biar menarik perhatian
+                .animate(
+                    onPlay: (controller) => controller.repeat(reverse: true))
+                .shimmer(
+                    duration: 2500.ms, color: Colors.white.withOpacity(0.4)),
           ],
         ),
       ),
@@ -618,7 +659,11 @@ Pilihan jawaban:
   }
 }
 
-// === WIDGETS PENDUKUNG ===
+// ... SISA CODE WIDGET DI BAWAH (HeaderSection, TargetCard, MenuCard, SimulasiCard) ...
+// ... BIARKAN SAMA SEPERTI YANG KAMU KIRIM, TIDAK PERLU DIUBAH LOGIKANYA ...
+// ... HANYA COPY PASTE BAGIAN ATAS (TosaApp & DashboardPage & HomePageContent) ...
+
+// === WIDGETS PENDUKUNG (PASTE INI JUGA BIAR LENGKAP) ===
 
 // === WIDGET HEADER (Full Code) ===
 class HeaderSection extends StatefulWidget {

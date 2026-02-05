@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+  flutter_animate: ^4.5.0  
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -112,7 +112,7 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon" # Nama icon di Android
   ios: true                # Generate juga untuk iOS
-  image_path: "assets/icons/logo_app.png" # <--- Sesuaikan dengan lokasi gambarmu
+  image_path: "assets/icons/logo_app2.png" # <--- Sesuaikan dengan lokasi gambarmu
   min_sdk_android: 21      # Opsional, biar aman di Android lama
   adaptive_icon_background: "#FFFFFF" # Warna background (Opsional, untuk Android 8+)
-  adaptive_icon_foreground: "assets/icons/logo_app.png" # Gambar depan (biasanya sama dgn image_path)
+  adaptive_icon_foreground: "assets/icons/logo_app2.png" # Gambar depan (biasanya sama dgn image_path)

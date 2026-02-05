@@ -127,7 +127,7 @@ class _LoginPageState extends State<LoginPage> {
                 child: SizedBox(
                   height: 120,
                   width: 120,
-                  child: Image.asset('assets/icons/logologin.png',
+                  child: Image.asset('assets/icons/logo_app1.png',
                       errorBuilder: (c, o, s) => const Icon(Icons.school,
                           size: 80, color: Colors.blue)),
                 ),

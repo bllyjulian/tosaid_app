@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:math'; // Untuk random pick materi default
+import 'package:flutter_animate/flutter_animate.dart'; // <--- IMPORT ANIMASI
 
 class HalamanTargetPage extends StatefulWidget {
   const HalamanTargetPage({super.key});
@@ -188,42 +188,31 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     return hasil;
   }
 
-// Pastikan format string di sini SAMA dengan format simpan di Kuis
   Map<String, dynamic> _buatTemplateMisi(String namaMateri) {
-    // namaMateri contoh: "Istima' Pola 1"
-    // Hasil Judul: "Latihan Istima' Pola 1"
-
     return {
       'judul': "Latihan $namaMateri",
       'xp': 50,
       'tipe': 'latihan_spesifik',
-
-      // KUNCI INI HARUS SAMA DENGAN JUDUL DI RIWAYAT SKOR
       'kunci_pencarian': "Latihan $namaMateri",
-
-      'status':
-          0 // 0: Belum (Panah), 1: Klaim (Tombol), 2: Selesai (Centang Hijau)
+      'status': 0 // 0: Belum, 1: Klaim, 2: Selesai
     };
   }
 
-  // --- DIALOG PILIH TARGET (VERSI LENGKAP & TIDAK KAKU) ---
+  // --- DIALOG PILIH TARGET ---
   void _tampilkanDialogPilihTarget() {
-    // Daftar Lengkap Materi
     final List<String> opsiTersedia = [
       "Istima' Pola 1",
       "Istima' Pola 2",
       "Istima' Pola 3",
       "Istima' Pola 4",
-      "Qira'ah Pola 1", // Qira'ah biasanya 1 pola umum
+      "Qira'ah Pola 1",
       "Tarakib Pola 1",
       "Tarakib Pola 2",
       "Tarakib Pola 3"
     ];
 
-    // Copy state saat ini ke variabel lokal dialog
     List<String> tempSelected = [];
 
-    // Coba ambil dari misi yang sedang aktif (biar checkbox terisi)
     for (var m in _misiHarian) {
       if (m['tipe'] == 'latihan_spesifik') {
         String judul = m['judul'].toString().replaceAll("Latihan ", "");
@@ -235,7 +224,7 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Biar bisa tinggi
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
@@ -243,7 +232,7 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return Container(
-              height: MediaQuery.of(context).size.height * 0.75, // 75% layar
+              height: MediaQuery.of(context).size.height * 0.75,
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,8 +254,6 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                   Text("Pilih materi yang ingin kamu kuasai hari ini.",
                       style: TextStyle(color: Colors.grey[600], fontSize: 14)),
                   const SizedBox(height: 20),
-
-                  // List Checkbox
                   Expanded(
                     child: ListView.builder(
                       itemCount: opsiTersedia.length,
@@ -311,19 +298,16 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                       },
                     ),
                   ),
-
                   const SizedBox(height: 10),
-                  // Tombol Aksi
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => Navigator.pop(context),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12))),
                           child: const Text("Nanti Aja"),
                         ),
                       ),
@@ -335,11 +319,10 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                             await _updateMisiCustom(tempSelected);
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
+                              backgroundColor: Colors.blue,
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12))),
                           child: const Text("Siap Belajar! 🚀",
                               style: TextStyle(
                                   color: Colors.white,
@@ -357,10 +340,8 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     );
   }
 
-  // Update Misi ke Database
   Future<void> _updateMisiCustom(List<String> pilihanBaru) async {
-    if (pilihanBaru.isEmpty) return; // Jangan update kalau kosong
-
+    if (pilihanBaru.isEmpty) return;
     setState(() {
       _isLoading = true;
       _targetTerpilih = pilihanBaru;
@@ -369,103 +350,68 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // Generate List Misi Baru
     List<Map<String, dynamic>> misiBaru = _generateMisiDariPilihan(pilihanBaru);
     String hariIni = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
     final supabase = Supabase.instance.client;
 
-    // Update ke Database (Overwrite hari ini)
     await supabase
         .from('misi_harian')
         .update({'daftar_misi': misiBaru})
         .eq('user_id', user.uid)
         .eq('tanggal', hariIni);
-
-    // Refresh Halaman (Biar langsung muncul)
     await _inisialisasiHalaman();
-
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text("Target belajar berhasil diatur! Semangat! 🔥"),
         backgroundColor: Colors.blue));
   }
 
-  // --- LOGIKA 2: VALIDASI MISI DENGAN RIWAYAT SKOR ---
-  // --- UPDATE LOGIKA VALIDASI: CEK APAKAH SUDAH DIKERJAKAN ---
-// --- LOGIKA 2: VALIDASI MISI (FIX TIMEZONE & STRING MATCH) ---
   Future<void> _validasiMisi(String uid) async {
     final supabase = Supabase.instance.client;
-
-    // 1. ATUR WAKTU LOKAL KE UTC (PENTING!)
-    // Ambil jam 00:00:00 waktu HP kamu sekarang
     DateTime now = DateTime.now();
     DateTime startLocal = DateTime(now.year, now.month, now.day);
     DateTime endLocal = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-    // Konversi ke format yang dimengerti Supabase (UTC ISO String)
     String startUtc = startLocal.toUtc().toIso8601String();
     String endUtc = endLocal.toUtc().toIso8601String();
 
     try {
-      // 2. QUERY DATABASE
       final response = await supabase
           .from('riwayat_skor')
           .select()
           .eq('user_id', uid)
-          .gte('created_at', startUtc) // Cek dari jam 00:00 (UTC Adjusted)
-          .lte('created_at', endUtc); // Sampai jam 23:59 (UTC Adjusted)
+          .gte('created_at', startUtc)
+          .lte('created_at', endUtc);
 
       List<dynamic> riwayatHariIni = response as List<dynamic>;
-
-      // DEBUG: Lihat apa yang berhasil diambil dari database
-      print("LOG DEBUG: Ditemukan ${riwayatHariIni.length} riwayat hari ini.");
-      if (riwayatHariIni.isNotEmpty) {
-        print("Judul Materi Pertama: ${riwayatHariIni[0]['judul_materi']}");
-      }
-
       bool adaPerubahan = false;
       String hariIni = DateFormat('yyyy-MM-dd').format(now);
 
       for (var misi in _misiHarian) {
         if (misi['status'] == 0) {
-          // Cek hanya yang belum selesai
           bool completed = false;
-
-          // --- TIPE 1: SIMULASI ---
           if (misi['tipe'] == 'simulasi') {
             completed = riwayatHariIni
                 .any((r) => r['jenis'] == 'simulasi' || r['jenis'] == null);
-          }
-
-          // --- TIPE 2: LATIHAN SPESIFIK ---
-          else if (misi['tipe'] == 'latihan_spesifik') {
+          } else if (misi['tipe'] == 'latihan_spesifik') {
             String kunci = (misi['kunci_pencarian'] ?? "").toLowerCase().trim();
-
-            // Cek apakah ada riwayat yang judulnya MENGANDUNG kunci
-            // Pakai 'contains' dan 'toLowerCase' biar tidak sensitif huruf besar/kecil/spasi
             completed = riwayatHariIni.any((r) {
               String judulDiDb =
                   (r['judul_materi'] ?? "").toString().toLowerCase().trim();
               return judulDiDb.contains(kunci);
             });
           }
-
           if (completed) {
-            print("Misi Selesai: ${misi['judul']}"); // Debug konfirmasi
             misi['status'] = 1;
             adaPerubahan = true;
           }
         }
       }
 
-      // 3. UPDATE JIKA ADA YANG SELESAI
       if (adaPerubahan) {
         await supabase
             .from('misi_harian')
             .update({'daftar_misi': _misiHarian})
             .eq('user_id', uid)
             .eq('tanggal', hariIni);
-
         if (mounted) setState(() {});
       }
     } catch (e) {
@@ -473,7 +419,6 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     }
   }
 
-  // --- LOGIKA 3: KLAIM XP ---
   Future<void> _klaimMisi(int index) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -481,21 +426,16 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     setState(() => _isLoading = true);
     final supabase = Supabase.instance.client;
     String hariIni = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
     int xpDidapat = _misiHarian[index]['xp'];
 
     try {
-      // 1. Update List Misi Lokal
-      _misiHarian[index]['status'] = 2; // Tandai Selesai (Diklaim)
-
-      // 2. Update Misi di Database
+      _misiHarian[index]['status'] = 2;
       await supabase
           .from('misi_harian')
           .update({'daftar_misi': _misiHarian})
           .eq('user_id', user.uid)
           .eq('tanggal', hariIni);
 
-      // 3. Tambah Total XP User
       final resProfil = await supabase
           .from('profil_siswa')
           .select('total_xp')
@@ -514,10 +454,9 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("Mantap! Kamu dapat +$xpDidapat XP 🎉"),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ));
+          content: Text("Mantap! Kamu dapat +$xpDidapat XP 🎉"),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating));
     } catch (e) {
       print("Gagal klaim: $e");
       setState(() => _isLoading = false);
@@ -529,7 +468,7 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     int misiSelesai = _misiHarian.where((e) => e['status'] == 2).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FD), // Warna background soft
+      backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
         title: const Text("Target Belajar",
             style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -548,11 +487,15 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header Stats
-                    _buildHeaderStatistik(misiSelesai),
+                    // 1. ANIMASI HEADER (Slide Down)
+                    _buildHeaderStatistik(misiSelesai)
+                        .animate()
+                        .fadeIn(duration: 600.ms)
+                        .slideY(begin: -0.2, end: 0, curve: Curves.easeOut),
+
                     const SizedBox(height: 24),
 
-                    // --- BAGIAN MISI HARIAN (DENGAN TOMBOL EDIT) ---
+                    // 2. JUDUL MISI HARIAN (Fade In)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -564,35 +507,44 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                           icon: const Icon(Icons.edit_note_rounded, size: 18),
                           label: const Text("Atur Target"),
                           style: TextButton.styleFrom(
-                            foregroundColor: Colors.blue,
-                            textStyle:
-                                const TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                              foregroundColor: Colors.blue,
+                              textStyle:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ],
-                    ),
+                    ).animate().fadeIn(duration: 500.ms),
+
                     const SizedBox(height: 10),
 
-                    // List Kartu Misi
+                    // 3. ANIMASI LIST MISI (Staggered - Muncul satu per satu)
                     if (_misiHarian.isEmpty)
                       const Center(child: Text("Belum ada target hari ini."))
                     else
                       ..._misiHarian.asMap().entries.map((entry) {
-                        return _buildKartuMisi(entry.value, entry.key);
+                        return _buildKartuMisi(entry.value, entry.key)
+                            .animate(
+                                delay: (200 * entry.key).ms) // Delay bertahap
+                            .fadeIn(duration: 500.ms)
+                            .slideX(begin: -0.1, end: 0); // Masuk dari kiri
                       }).toList(),
 
                     const SizedBox(height: 30),
 
-                    // --- BAGIAN MIND MAP (VERTICAL) ---
+                    // 4. BAGIAN MIND MAP (Fade In)
                     const Text("Peta Konsep Belajar 🗺️",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold))
+                        .animate(delay: 400.ms)
+                        .fadeIn(),
                     const SizedBox(height: 5),
                     Text("Alur materi yang akan kamu pelajari:",
-                        style:
-                            TextStyle(fontSize: 14, color: Colors.grey[600])),
+                            style: TextStyle(
+                                fontSize: 14, color: Colors.grey[600]))
+                        .animate(delay: 500.ms)
+                        .fadeIn(),
                     const SizedBox(height: 16),
 
+                    // 5. ANIMASI PETA KONSEP (Staggered Vertical)
                     _buildMindMapVertical(),
 
                     const SizedBox(height: 40),
@@ -603,7 +555,7 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     );
   }
 
-  // --- WIDGET MIND MAP VERTIKAL (TIMELINE STYLE) ---
+  // --- WIDGET MIND MAP VERTIKAL (Dengan Animasi) ---
   Widget _buildMindMapVertical() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -618,60 +570,54 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                 offset: const Offset(0, 5))
           ]),
       child: Column(
-        children: _petaKonsepData.map((skill) {
+        children: _petaKonsepData.asMap().entries.map((entry) {
+          int index = entry.key;
+          var skill = entry.value;
           return IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Bagian Kiri: Garis & Dot
                 Column(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: skill['color'].withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
+                          color: skill['color'].withOpacity(0.1),
+                          shape: BoxShape.circle),
                       child:
                           Icon(skill['icon'], color: skill['color'], size: 20),
                     ),
                     Expanded(
                       child: Container(
-                        width: 2,
-                        color: Colors.grey.shade200,
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                      ),
+                          width: 2,
+                          color: Colors.grey.shade200,
+                          margin: const EdgeInsets.symmetric(vertical: 4)),
                     ),
                   ],
                 ),
                 const SizedBox(width: 16),
-
-                // Bagian Kanan: Konten
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 30),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Judul Skill
                         Text(skill['skill'],
                             style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: skill['color'])),
                         const SizedBox(height: 12),
-
-                        // List Anak (Indikator)
                         ...(skill['items'] as List).map((item) {
                           return Container(
                             width: double.infinity,
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF9FAFC),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade100),
-                            ),
+                                color: const Color(0xFFF9FAFC),
+                                borderRadius: BorderRadius.circular(12),
+                                border:
+                                    Border.all(color: Colors.grey.shade100)),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -696,17 +642,19 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
                 ),
               ],
             ),
-          );
+          )
+              // ANIMASI SETIAP ITEM PETA KONSEP
+              .animate(
+                  delay: (600 + (200 * index)).ms) // Mulai setelah Misi selesai
+              .fadeIn(duration: 600.ms)
+              .slideY(begin: 0.1, end: 0); // Masuk dari bawah
         }).toList(),
       ),
     );
   }
 
-  // --- WIDGET KARTU MISI (DIPERCANTIK) ---
   Widget _buildKartuMisi(Map<String, dynamic> misi, int index) {
-    int status = misi['status']; // 0: Belum, 1: Bisa Klaim, 2: Selesai
-
-    // Tentukan Warna & Icon berdasarkan status
+    int status = misi['status'];
     Color warnaBorder = Colors.grey.shade200;
     Color warnaBg = Colors.white;
     Color warnaTeks = Colors.black87;
@@ -714,13 +662,11 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
     Color warnaIcon = Colors.grey;
 
     if (status == 1) {
-      // BISA KLAIM
       warnaBorder = Colors.blue.shade200;
       warnaBg = Colors.blue.shade50;
-      iconStatus = Icons.card_giftcard; // Icon hadiah
+      iconStatus = Icons.card_giftcard;
       warnaIcon = Colors.blue;
     } else if (status == 2) {
-      // SELESAI
       warnaBorder = Colors.green.shade200;
       warnaBg = Colors.green.shade50;
       iconStatus = Icons.check_circle;
@@ -746,19 +692,15 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
       ),
       child: Row(
         children: [
-          // Icon Kiri
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: warnaIcon.withOpacity(0.3)),
-            ),
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: warnaIcon.withOpacity(0.3))),
             child: Icon(iconStatus, size: 20, color: warnaIcon),
           ),
           const SizedBox(width: 16),
-
-          // Teks Judul & XP
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -787,28 +729,29 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
               ],
             ),
           ),
-
-          // Tombol Aksi
           if (status == 1)
             ElevatedButton(
               onPressed: () => _klaimMisi(index),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                elevation: 2,
-              ),
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  elevation: 2),
               child: const Text("Klaim",
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.bold)),
             )
+                // ANIMASI SHIMMER DI TOMBOL KLAIM
+                .animate(
+                    onPlay: (controller) => controller.repeat(reverse: true))
+                .shimmer(
+                    duration: 1500.ms, color: Colors.white.withOpacity(0.5))
           else if (status == 0)
-            const Icon(Icons.chevron_right,
-                color: Colors.grey) // Indikator "Lakukan"
+            const Icon(Icons.chevron_right, color: Colors.grey)
           else
             const Text("Selesai",
                 style: TextStyle(
@@ -825,10 +768,9 @@ class _HalamanTargetPageState extends State<HalamanTargetPage> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF42A5F5), Color(0xFF1976D2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+            colors: [Color(0xFF42A5F5), Color(0xFF1976D2)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(

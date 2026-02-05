@@ -57,14 +57,13 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
       List<Map<String, dynamic>> processedList = [];
 
       // ====================================================
-      // LOGIKA TAB 1: LEADERBOARD XP (LATIHAN)
-      // Sumber: Tabel 'profil_siswa' -> Kolom 'nama'
+      // LOGIKA TAB 1: LATIHAN (XP) - Sudah Benar
       // ====================================================
       if (_selectedTab == 0) {
         final response = await supabase
             .from('profil_siswa')
-            .select('id, nama, total_xp, avatar_url') // <--- PAKAI 'nama'
-            .order('total_xp', ascending: false) // Urutkan XP Tertinggi
+            .select('id, nama, total_xp, avatar_url')
+            .order('total_xp', ascending: false)
             .limit(50);
 
         List<dynamic> data = response as List<dynamic>;
@@ -73,7 +72,7 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
           var item = data[i];
           processedList.add({
             'user_id': item['id'],
-            'nama': item['nama'] ?? 'Siswa', // Ambil dari 'nama'
+            'nama': item['nama'] ?? 'Siswa',
             'skor': item['total_xp'] ?? 0,
             'avatar_url': item['avatar_url'],
             'rank': i + 1,
@@ -83,47 +82,73 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
       }
 
       // ====================================================
-      // LOGIKA TAB 2: LEADERBOARD TOSA (SIMULASI)
-      // Sumber: Tabel 'riwayat_skor' -> Kolom 'nama_siswa'
+      // LOGIKA TAB 2: SIMULASI (TOSA) - PERBAIKAN AVATAR
       // ====================================================
       else {
-        // Ambil skor simulasi tertinggi
+        // 1. Ambil Skor
         final response = await supabase
             .from('riwayat_skor')
-            .select(
-                'user_id, nama_siswa, skor_akhir') // <--- PAKAI 'nama_siswa'
+            .select('user_id, nama_siswa, skor_akhir')
             .eq('jenis', 'simulasi')
             .order('skor_akhir', ascending: false);
 
         List<dynamic> allScores = response as List<dynamic>;
 
-        // Filter: Hanya ambil 1 skor tertinggi per user (Distinct)
+        // 2. Filter Skor Tertinggi & Kumpulkan User ID
         Map<String, Map<String, dynamic>> uniqueUsers = {};
 
         for (var item in allScores) {
           String uid = item['user_id'];
-          // Karena sudah di-order descending, data pertama yang ketemu pasti skor tertinggi user tsb
+          // Ambil skor tertinggi saja
           if (!uniqueUsers.containsKey(uid)) {
             uniqueUsers[uid] = {
               'user_id': uid,
-              'nama': item['nama_siswa'] ?? 'Siswa', // Ambil dari 'nama_siswa'
+              'nama': item['nama_siswa'] ?? 'Siswa',
               'skor': item['skor_akhir'] ?? 0,
-              'avatar_url': null, // Riwayat skor tidak punya avatar
+              'avatar_url': null, // Nanti diisi di langkah 3
             };
           }
         }
 
-        // Konversi Map ke List dan beri Ranking
+        // 3. AMBIL AVATAR DARI TABEL PROFIL_SISWA
+        // Kumpulkan semua ID yang ada di leaderboard
+        List<String> userIds = uniqueUsers.keys.toList();
+
+        if (userIds.isNotEmpty) {
+          final profilesResponse = await supabase
+              .from('profil_siswa')
+              .select('id, avatar_url')
+              // --- PERBAIKAN DI SINI ---
+              // Ganti .in_('id', userIds) menjadi .filter('id', 'in', userIds)
+              .filter('id', 'in', userIds);
+
+          List<dynamic> profiles = profilesResponse as List<dynamic>;
+
+          // Masukkan avatar ke map uniqueUsers
+          for (var p in profiles) {
+            String uid = p['id'];
+            if (uniqueUsers.containsKey(uid)) {
+              uniqueUsers[uid]!['avatar_url'] = p['avatar_url'];
+            }
+          }
+        }
+
+        // 4. Konversi ke List untuk Tampilan
         int rank = 1;
-        uniqueUsers.forEach((key, value) {
+        // Urutkan lagi berdasarkan skor (jaga-jaga map mengacak urutan)
+        var sortedKeys = uniqueUsers.keys.toList()
+          ..sort((a, b) =>
+              uniqueUsers[b]!['skor'].compareTo(uniqueUsers[a]!['skor']));
+
+        for (var key in sortedKeys) {
           if (rank <= 50) {
-            // Limit 50 besar
+            var value = uniqueUsers[key]!;
             value['rank'] = rank;
             value['color'] = _getRankColor(rank);
             processedList.add(value);
             rank++;
           }
-        });
+        }
       }
 
       // --- PISAHKAN TOP 3 & MY RANK ---
@@ -132,7 +157,7 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
         _topThree = [processedList[1], processedList[0], processedList[2]];
         _otherRanks = processedList.sublist(3);
       } else {
-        _topThree = processedList; // Kalau kurang dari 3, tampilkan apa adanya
+        _topThree = processedList;
         _otherRanks = [];
       }
 
@@ -140,7 +165,7 @@ class _HalamanLeaderboardPageState extends State<HalamanLeaderboardPage> {
       try {
         _myRankData = processedList.firstWhere((e) => e['user_id'] == myUserId);
       } catch (e) {
-        _myRankData = null; // Tidak masuk ranking
+        _myRankData = null;
       }
 
       if (mounted) setState(() => _isLoading = false);
